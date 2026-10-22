@@ -1,3 +1,11 @@
 {
-"currentversion": "0.8"
+"currentVersion": "0.8",
+"releaseDate": "2026-10-22",
+"author": "Robbie Ferguson",
+"updateSummary": "Initial release with core features.",
+"changes": [
+"Initial release."
+],
+"downloadUrl": "https://github.com/Cat5TV/360-portrait-studio/releases/latest",
+"mandatoryUpdate": false
 }
