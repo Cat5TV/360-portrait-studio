@@ -313,12 +313,16 @@ class MainWindow(QMainWindow):
         # --- Color ---
         color_box = CollapsibleBox("Color Adjustments", expanded=True)
         self.create_wb_row(color_box.content_layout)
+        self.sliders['bright'] = self.create_slider_row(color_box.content_layout, "Brightness:", -100, 100, 0)
+        self.sliders['contrast'] = self.create_slider_row(color_box.content_layout, "Contrast:", -50, 50, 0)
+        self.sliders['shadows'] = self.create_slider_row(color_box.content_layout, "Boost Shadows:", 0, 100, 0)
+        self.sliders['highlights'] = self.create_slider_row(color_box.content_layout, "Boost Highlights:", 0, 100, 0)
         self.sliders['sat'] = self.create_slider_row(color_box.content_layout, "Saturation:", -50, 100, 0)
         control_panel.addWidget(color_box)
 
         # --- Effects ---
         fx_box = CollapsibleBox("Effects", expanded=True)
-        self.sliders['dof'] = self.create_slider_row(fx_box.content_layout, "Depth of Field (Blur):", 0, 50, 0)
+        self.sliders['dof'] = self.create_slider_row(fx_box.content_layout, "Edge Blur:", 0, 50, 0)
         self.sliders['vig'] = self.create_slider_row(fx_box.content_layout, "Vignette Amount:", 0, 100, 0)
         
         # Beautify Tool
@@ -359,10 +363,16 @@ class MainWindow(QMainWindow):
         self.sliders['pitch'].setValue(0)
         self.sliders['roll'].setValue(0)
         self.sliders['zoom'].setValue(30)
+        
+        self.sliders['temp'].setValue(0)
+        self.sliders['bright'].setValue(0)
+        self.sliders['contrast'].setValue(0)
+        self.sliders['shadows'].setValue(0)
+        self.sliders['highlights'].setValue(0)
         self.sliders['sat'].setValue(0)
+        
         self.sliders['dof'].setValue(0)
         self.sliders['vig'].setValue(0)
-        self.sliders['temp'].setValue(0)
 
     def show_about(self):
         dlg = AboutDialog(self)
@@ -484,7 +494,14 @@ class MainWindow(QMainWindow):
     def apply_image_adjustments(self, img, apply_beautify=False):
         if img is None: return None
         
-        temp, sat, dof, vig = self.sliders['temp'].value(), self.sliders['sat'].value(), self.sliders['dof'].value(), self.sliders['vig'].value()
+        temp = self.sliders['temp'].value()
+        bright = self.sliders['bright'].value()
+        cont = self.sliders['contrast'].value()
+        shadows_val = self.sliders['shadows'].value()
+        highlights_val = self.sliders['highlights'].value()
+        sat = self.sliders['sat'].value()
+        dof = self.sliders['dof'].value()
+        vig = self.sliders['vig'].value()
 
         if img.dtype != np.uint8: 
             img = cv2.normalize(img, None, 0, 255, cv2.NORM_MINMAX, dtype=cv2.CV_8U)
@@ -496,9 +513,28 @@ class MainWindow(QMainWindow):
             b = np.clip(b * (1.0 - (temp / 150.0)), 0, 255)
             img = cv2.merge([b, g, r]).astype(np.uint8)
 
-        if sat != 0:
+        if bright != 0 or cont != 0:
+            alpha = 1.0 + (cont / 100.0)
+            beta = bright
+            img = cv2.convertScaleAbs(img, alpha=alpha, beta=beta)
+
+        if sat != 0 or shadows_val > 0 or highlights_val > 0:
             hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV).astype(np.float32)
-            hsv[:, :, 1] = np.clip(hsv[:, :, 1] * (1.0 + (sat / 100.0)), 0, 255)
+            if sat != 0:
+                hsv[:, :, 1] = np.clip(hsv[:, :, 1] * (1.0 + (sat / 100.0)), 0, 255)
+            
+            v = hsv[:, :, 2]
+            if shadows_val > 0:
+                shadows = shadows_val * 0.3
+                shadow_mask = np.clip(1.0 - (v / 128.0), 0, 1)
+                v = np.clip(v + (shadow_mask * shadows * 1.5), 0, 255)
+                
+            if highlights_val > 0:
+                highlights = highlights_val * 0.3
+                highlight_mask = np.clip((v - 128.0) / 127.0, 0, 1)
+                v = np.clip(v + (highlight_mask * highlights * 1.5), 0, 255)
+                
+            hsv[:, :, 2] = v
             img = cv2.cvtColor(hsv.astype(np.uint8), cv2.COLOR_HSV2BGR)
 
         if dof > 0:
