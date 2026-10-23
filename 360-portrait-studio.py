@@ -275,11 +275,11 @@ class MainWindow(QMainWindow):
         control_panel.addWidget(self.btn_save)
         control_panel.addStretch()
 
-        # Keyboard nudging... work in progress (doesn't work yet)
-        QShortcut(QKeySequence(Qt.Key.Key_Left), self).activated.connect(lambda: self.nudge_view(-0.2, 0))
-        QShortcut(QKeySequence(Qt.Key.Key_Right), self).activated.connect(lambda: self.nudge_view(0.2, 0))
-        QShortcut(QKeySequence(Qt.Key.Key_Up), self).activated.connect(lambda: self.nudge_view(0, 0.2))
-        QShortcut(QKeySequence(Qt.Key.Key_Down), self).activated.connect(lambda: self.nudge_view(0, -0.2))
+        # Keyboard nudging
+        QShortcut(QKeySequence(Qt.Key.Key_Left), self).activated.connect(lambda: self.nudge_view(-0.02, 0))
+        QShortcut(QKeySequence(Qt.Key.Key_Right), self).activated.connect(lambda: self.nudge_view(0.02, 0))
+        QShortcut(QKeySequence(Qt.Key.Key_Up), self).activated.connect(lambda: self.nudge_view(0, 0.02))
+        QShortcut(QKeySequence(Qt.Key.Key_Down), self).activated.connect(lambda: self.nudge_view(0, -0.02))
 
     def show_about(self):
         dlg = AboutDialog(self)
@@ -287,21 +287,21 @@ class MainWindow(QMainWindow):
 
     def nudge_view(self, d_yaw, d_pitch):
         if not self.projector: return
-        
+
         self.float_yaw += d_yaw
         self.float_pitch += d_pitch
-        
+
         self.float_yaw = (self.float_yaw + 180.0) % 360.0 - 180.0
         self.float_pitch = max(-90.0, min(90.0, self.float_pitch))
 
         self.sliders['yaw'].blockSignals(True)
-        self.sliders['yaw'].setValue(int(self.float_yaw))
+        self.sliders['yaw'].setValue(round(self.float_yaw))
         self.sliders['yaw'].blockSignals(False)
-        
+
         self.sliders['pitch'].blockSignals(True)
-        self.sliders['pitch'].setValue(int(self.float_pitch))
+        self.sliders['pitch'].setValue(round(self.float_pitch))
         self.sliders['pitch'].blockSignals(False)
-        
+
         self.update_view()
 
     def create_slider_row(self, layout, label_text, min_val, max_val, default_val):
@@ -500,10 +500,17 @@ class MainWindow(QMainWindow):
     def _do_update_view(self):
         if not self.projector: return
         
-        yaw, pitch, roll = self.sliders['yaw'].value(), self.sliders['pitch'].value(), self.sliders['roll'].value()
-        self.float_yaw, self.float_pitch = float(yaw), float(pitch)
+        yaw = self.sliders['yaw'].value()
+        pitch = self.sliders['pitch'].value()
+        roll = self.sliders['roll'].value()
         
-        self.base_proj_img = self.projector.get_projection(yaw, pitch, roll, self.get_fov(), self.get_aspect_ratio(), preview_width=800)
+        # FIX: Only overwrite the high-precision float if the user manually dragged the slider
+        if round(self.float_yaw) != yaw:
+            self.float_yaw = float(yaw)
+        if round(self.float_pitch) != pitch:
+            self.float_pitch = float(pitch)
+        
+        self.base_proj_img = self.projector.get_projection(self.float_yaw, self.float_pitch, roll, self.get_fov(), self.get_aspect_ratio(), preview_width=800)
         self.refresh_display()
 
     def save_image(self):
