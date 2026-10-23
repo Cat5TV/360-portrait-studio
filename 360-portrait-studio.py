@@ -153,6 +153,8 @@ class AboutDialog(QDialog):
         <p>Created by Robbie Ferguson // The Bald Nerd</p>
         <p>Robbie is the founder of Category5 TV Network, host of several technology broadcasts, 
         and the creator of NEMS Linux.</p>
+        <p>I build this software and many other creative projects to share with the community for free. 
+        If you find it useful, please consider supporting my work!</p>
         <p>Visit <a href="https://baldnerd.com/">https://baldnerd.com/</a> to learn more.</p>
         """
         lbl = QLabel(text)
@@ -236,6 +238,10 @@ class MainWindow(QMainWindow):
         self.base_proj_img = None 
         self.is_previewing = False
         
+        # Directory memory variables
+        self.last_load_dir = ""
+        self.last_export_dir = ""
+        
         self.render_timer = QTimer()
         self.render_timer.setSingleShot(True)
         self.render_timer.timeout.connect(self._do_update_view)
@@ -260,12 +266,17 @@ class MainWindow(QMainWindow):
         self.btn_load.clicked.connect(self.load_image)
         self.btn_load.setMinimumHeight(35)
         
+        self.btn_reset_all = QPushButton("Reset All")
+        self.btn_reset_all.clicked.connect(self.reset_all_settings)
+        self.btn_reset_all.setMinimumHeight(35)
+        
         self.btn_about = QPushButton("About")
         self.btn_about.clicked.connect(self.show_about)
         self.btn_about.setMinimumHeight(35)
         self.btn_about.setFixedWidth(70)
         
         top_btn_layout.addWidget(self.btn_load)
+        top_btn_layout.addWidget(self.btn_reset_all)
         top_btn_layout.addWidget(self.btn_about)
         control_panel.addLayout(top_btn_layout)
 
@@ -333,6 +344,25 @@ class MainWindow(QMainWindow):
         QShortcut(QKeySequence(Qt.Key.Key_Right), self).activated.connect(lambda: self.nudge_view(0.02, 0))
         QShortcut(QKeySequence(Qt.Key.Key_Up), self).activated.connect(lambda: self.nudge_view(0, 0.02))
         QShortcut(QKeySequence(Qt.Key.Key_Down), self).activated.connect(lambda: self.nudge_view(0, -0.02))
+
+    def reset_all_settings(self):
+        self.aspect_combo.setCurrentIndex(0)
+        self.orient_combo.setCurrentIndex(0)
+        
+        self.chk_grid.setChecked(False)
+        self.chk_beautify.setChecked(False)
+        
+        self.float_yaw = 0.0
+        self.float_pitch = 0.0
+        
+        self.sliders['yaw'].setValue(0)
+        self.sliders['pitch'].setValue(0)
+        self.sliders['roll'].setValue(0)
+        self.sliders['zoom'].setValue(30)
+        self.sliders['sat'].setValue(0)
+        self.sliders['dof'].setValue(0)
+        self.sliders['vig'].setValue(0)
+        self.sliders['temp'].setValue(0)
 
     def show_about(self):
         dlg = AboutDialog(self)
@@ -412,11 +442,11 @@ class MainWindow(QMainWindow):
 
     def load_image(self):
         file_filter = "Image Files (*.jpg *.jpeg *.JPG *.JPEG *.png *.PNG *.hdr *.exr *.tiff *.tif *.webp *.WEBP)"
-        file_name, _ = QFileDialog.getOpenFileName(self, "Open 360 Image", "", file_filter)
+        file_name, _ = QFileDialog.getOpenFileName(self, "Open 360 Image", self.last_load_dir, file_filter)
         if file_name:
+            self.last_load_dir = os.path.dirname(file_name)
             self.projector = EquirectangularProjector(file_name)
-            self.float_yaw = 0.0
-            self.float_pitch = 0.0
+            self.reset_all_settings()
             self.update_view()
 
     def get_aspect_ratio(self):
@@ -557,7 +587,6 @@ class MainWindow(QMainWindow):
         pitch = self.sliders['pitch'].value()
         roll = self.sliders['roll'].value()
         
-        # FIX: Only overwrite the high-precision float if the user manually dragged the slider
         if round(self.float_yaw) != yaw:
             self.float_yaw = float(yaw)
         if round(self.float_pitch) != pitch:
@@ -574,11 +603,14 @@ class MainWindow(QMainWindow):
         yaw, pitch, roll = self.sliders['yaw'].value(), self.sliders['pitch'].value(), self.sliders['roll'].value()
         
         default_save_name = f"{base_name}_Y{yaw}_P{pitch}_R{roll}_{aspect_str}"
+        default_path = os.path.join(self.last_export_dir, default_save_name) if self.last_export_dir else default_save_name
         file_filter = "JPEG High Quality (*.jpg *.jpeg);;TIFF Lossless (*.tiff *.tif);;PNG Lossless (*.png);;WebP Compressed (*.webp)"
         
+        options = QFileDialog.Option.DontUseNativeDialog | QFileDialog.Option.DontConfirmOverwrite
+        
         save_path, selected_filter = QFileDialog.getSaveFileName(
-            self, "Export", default_save_name, file_filter, 
-            options=QFileDialog.Option.DontUseNativeDialog
+            self, "Export", default_path, file_filter, 
+            options=options
         )
         
         if save_path:
@@ -590,6 +622,15 @@ class MainWindow(QMainWindow):
                 save_path += ".png"
             elif "WebP" in selected_filter and not save_path.lower().endswith('.webp'):
                 save_path += ".webp"
+                
+            if os.path.exists(save_path):
+                reply = QMessageBox.question(self, "Overwrite File?", 
+                                             f"The file {os.path.basename(save_path)} already exists.\nAre you sure you want to overwrite it?",
+                                             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+                if reply == QMessageBox.StandardButton.No:
+                    return
+
+            self.last_export_dir = os.path.dirname(save_path)
 
             master_img = self.projector.get_projection(yaw, pitch, roll, self.get_fov(), self.get_aspect_ratio(), preview_width=None)
             master_img = self.apply_image_adjustments(master_img, apply_beautify=self.chk_beautify.isChecked())
