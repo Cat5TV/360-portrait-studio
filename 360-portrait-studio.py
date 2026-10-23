@@ -1,16 +1,23 @@
+# ==============================================================================
 # Baldnerd's 360 Portrait Studio
-# By Robbie Ferguson
-# Version 0.8
+# Created by Robbie Ferguson // The Bald Nerd
+#
+# Repository: https://github.com/Cat5TV/360-portrait-studio
+# ==============================================================================
 
 import sys
 import cv2
 import numpy as np
 import os
+import urllib.request
+import json
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                              QHBoxLayout, QPushButton, QLabel, QSlider, QFileDialog, QComboBox,
                              QSizePolicy, QCheckBox, QMessageBox, QToolButton, QDialog)
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QUrl
 from PyQt6.QtGui import QImage, QPixmap, QShortcut, QKeySequence, QDesktopServices
+
+VERSION = "0.8"
 
 class EquirectangularProjector:
     def __init__(self, image_path):
@@ -137,12 +144,12 @@ class CollapsibleBox(QWidget):
 class AboutDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("About Baldnerd's 360 Studio")
-        self.setMinimumWidth(450) # Allows dynamic height calculation
+        self.setWindowTitle("About Baldnerd's 360 Portrait Studio")
+        self.setMinimumWidth(450)
         layout = QVBoxLayout(self)
         
-        text = """
-        <h3>Baldnerd's 360 Studio</h3>
+        text = f"""
+        <h3>Baldnerd's 360 Portrait Studio (v{VERSION})</h3>
         <p>Created by Robbie Ferguson // The Bald Nerd</p>
         <p>Robbie is the founder of Category5 TV Network, host of several technology broadcasts, 
         and the creator of NEMS Linux.</p>
@@ -156,12 +163,16 @@ class AboutDialog(QDialog):
         
         btn_layout = QHBoxLayout()
         
+        btn_update = QPushButton("Check for Updates")
+        btn_update.clicked.connect(self.check_for_updates)
+        
         btn_donate = QPushButton("Donate")
         btn_donate.clicked.connect(lambda: QDesktopServices.openUrl(QUrl("https://donate.category5.tv/")))
         
         btn_patron = QPushButton("Become a Patron")
         btn_patron.clicked.connect(lambda: QDesktopServices.openUrl(QUrl("https://patreon.com/Category5")))
         
+        btn_layout.addWidget(btn_update)
         btn_layout.addWidget(btn_donate)
         btn_layout.addWidget(btn_patron)
         
@@ -171,10 +182,52 @@ class AboutDialog(QDialog):
         close_btn.clicked.connect(self.accept)
         layout.addWidget(close_btn)
 
+    def check_for_updates(self):
+        try:
+            url = "https://raw.githubusercontent.com/Cat5TV/360-portrait-studio/refs/heads/main/currentversion.json"
+            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+            
+            with urllib.request.urlopen(req, timeout=5) as response:
+                data = json.loads(response.read().decode('utf-8'))
+                
+            latest_version = data.get("currentVersion", "")
+            
+            if not latest_version:
+                QMessageBox.warning(self, "Update Check", "Could not parse the version from the update server.")
+                return
+
+            if latest_version != VERSION:
+                msg = f"A new version (<b>v{latest_version}</b>) is available!<br>You are currently running v{VERSION}.<br><br>"
+                
+                summary = data.get("updateSummary", "")
+                if summary:
+                    msg += f"<b>Summary:</b> {summary}<br><br>"
+                    
+                changes = data.get("changes", [])
+                if changes:
+                    msg += "<b>Changes:</b><ul>"
+                    for change in changes:
+                        msg += f"<li>{change}</li>"
+                    msg += "</ul><br>"
+                    
+                download_url = data.get("downloadUrl", "https://github.com/Cat5TV/360-portrait-studio")
+                msg += f"Please visit the <a href='{download_url}'>repository</a> to download the latest release."
+                
+                box = QMessageBox(self)
+                box.setWindowTitle("Update Available")
+                box.setTextFormat(Qt.TextFormat.RichText)
+                box.setText(msg)
+                box.exec()
+            else:
+                QMessageBox.information(self, "Up to Date", f"You are running the latest version (v{VERSION}).")
+                
+        except Exception as e:
+            QMessageBox.warning(self, "Update Check Failed", f"Could not connect to the update server.\n\nError: {e}")
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Baldnerd's 360 Studio")
+        self.setWindowTitle(f"Baldnerd's 360 Portrait Studio - v{VERSION}")
         self.resize(1300, 900)
         self.projector = None
         
