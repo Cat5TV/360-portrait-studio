@@ -11,13 +11,14 @@ import numpy as np
 import os
 import urllib.request
 import json
+import time
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                              QHBoxLayout, QPushButton, QLabel, QSlider, QFileDialog, QComboBox,
                              QSizePolicy, QCheckBox, QMessageBox, QToolButton, QDialog)
-from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QUrl, QVariantAnimation
-from PyQt6.QtGui import QImage, QPixmap, QShortcut, QKeySequence, QDesktopServices, QPainter, QColor, QPen
+from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QUrl
+from PyQt6.QtGui import QImage, QPixmap, QShortcut, QKeySequence, QDesktopServices
 
-VERSION = "0.9"
+VERSION = "0.8"
 
 class EquirectangularProjector:
     def __init__(self, image_path):
@@ -66,106 +67,30 @@ class InteractiveImageLabel(QLabel):
 
     def __init__(self):
         super().__init__()
+        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.setStyleSheet("background-color: #111; color: #777; font-size: 16px;")
+        self.setText("Load a 360 Image to begin.")
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.setMinimumSize(400, 400)
         self.last_pos = None
         self.current_pixmap = None
-        self.old_pixmap = None
-        self.raw_preview_img = None 
-        
-        self.show_grid = False
-        self.is_preview = False
         self.eyedropper_mode = False
+        self.raw_preview_img = None 
 
-        # Fade Animation setup
-        self.fade_anim = QVariantAnimation()
-        self.fade_anim.setDuration(250) # 250ms crossfade
-        self.fade_anim.valueChanged.connect(self._update_fade)
-        self.fade_anim.finished.connect(self._fade_finished)
-        self.fade_alpha = 1.0
-
-    def set_master_pixmap(self, pixmap, raw_img, fade=False):
+    def set_master_pixmap(self, pixmap, raw_img):
+        self.current_pixmap = pixmap
         self.raw_preview_img = raw_img
-        if fade and self.current_pixmap:
-            self.old_pixmap = self.current_pixmap
-            self.current_pixmap = pixmap
-            self.fade_anim.setStartValue(0.0)
-            self.fade_anim.setEndValue(1.0)
-            self.fade_anim.start()
-        else:
-            self.fade_anim.stop()
-            self.old_pixmap = None
-            self.current_pixmap = pixmap
-            self.fade_alpha = 1.0
-            self.update()
+        self.update_display()
 
-    def _update_fade(self, value):
-        self.fade_alpha = value
-        self.update()
+    def update_display(self):
+        if self.current_pixmap:
+            scaled_pixmap = self.current_pixmap.scaled(
+                self.size(), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+            super().setPixmap(scaled_pixmap)
 
-    def _fade_finished(self):
-        self.old_pixmap = None
-        self.fade_alpha = 1.0
-        self.update()
-
-    def paintEvent(self, event):
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
-        painter.fillRect(self.rect(), QColor("#111"))
-
-        if not self.current_pixmap and not self.old_pixmap:
-            painter.setPen(QColor("#777"))
-            font = painter.font()
-            font.setPixelSize(16)
-            painter.setFont(font)
-            painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, "Load a 360 Image to begin.")
-            return
-
-        def draw_pm(pm, alpha):
-            scaled = pm.scaled(self.size(), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
-            x = (self.width() - scaled.width()) // 2
-            y = (self.height() - scaled.height()) // 2
-            painter.setOpacity(alpha)
-            painter.drawPixmap(x, y, scaled)
-            return x, y, scaled.width(), scaled.height()
-
-        x, y, w, h = 0, 0, 0, 0
-        if self.old_pixmap:
-            # Draw old image at 100%, then new image crossfading over top
-            draw_pm(self.old_pixmap, 1.0)
-            x, y, w, h = draw_pm(self.current_pixmap, self.fade_alpha)
-        elif self.current_pixmap:
-            x, y, w, h = draw_pm(self.current_pixmap, 1.0)
-
-        # Draw Crisp Vector Grid Layer
-        if self.show_grid and w > 0:
-            painter.setOpacity(0.4)
-            pen = QPen(Qt.GlobalColor.white, max(1, h // 400))
-            painter.setPen(pen)
-            
-            # Rule of Thirds
-            painter.drawLine(x + w//3, y, x + w//3, y + h)
-            painter.drawLine(x + 2*w//3, y, x + 2*w//3, y + h)
-            painter.drawLine(x, y + h//3, x + w, y + h//3)
-            painter.drawLine(x, y + 2*h//3, x + w, y + 2*h//3)
-            
-            # Center Crosshair
-            painter.setOpacity(0.6)
-            cx, cy = x + w//2, y + h//2
-            c_len = min(w, h) // 20
-            painter.drawLine(cx - c_len, cy, cx + c_len, cy)
-            painter.drawLine(cx, cy - c_len, cx, cy + c_len)
-
-        # Draw Crisp Vector Preview Text Layer
-        if self.is_preview and w > 0:
-            painter.setOpacity(1.0)
-            painter.setPen(QColor(0, 215, 255))
-            font = painter.font()
-            font.setPixelSize(24)
-            font.setBold(True)
-            painter.setFont(font)
-            painter.drawText(x + 20, y + 40, "PREVIEW")
+    def resizeEvent(self, event):
+        self.update_display()
+        super().resizeEvent(event)
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
@@ -262,8 +187,16 @@ class AboutDialog(QDialog):
 
     def check_for_updates(self):
         try:
-            url = "https://raw.githubusercontent.com/Cat5TV/360-portrait-studio/refs/heads/main/currentversion.json"
-            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+            # Append a timestamp to the URL to bypass GitHub's CDN caching
+            base_url = "https://raw.githubusercontent.com/Cat5TV/360-portrait-studio/refs/heads/main/currentversion.json"
+            url = f"{base_url}?nocache={int(time.time())}"
+            
+            # Add headers to explicitly request no caching
+            req = urllib.request.Request(url, headers={
+                'User-Agent': 'Mozilla/5.0',
+                'Cache-Control': 'no-cache',
+                'Pragma': 'no-cache'
+            })
             
             with urllib.request.urlopen(req, timeout=5) as response:
                 data = json.loads(response.read().decode('utf-8'))
@@ -317,7 +250,6 @@ class MainWindow(QMainWindow):
         self.last_load_dir = ""
         self.last_export_dir = ""
         
-        # 4-Tier Progressive Rendering Timers
         self.fast_timer = QTimer()
         self.fast_timer.setSingleShot(True)
         self.fast_timer.timeout.connect(self._render_fast)
@@ -462,8 +394,10 @@ class MainWindow(QMainWindow):
 
     def nudge_view(self, d_yaw, d_pitch):
         if not self.projector: return
+
         self.float_yaw += d_yaw
         self.float_pitch += d_pitch
+
         self.float_yaw = (self.float_yaw + 180.0) % 360.0 - 180.0
         self.float_pitch = max(-90.0, min(90.0, self.float_pitch))
 
@@ -637,6 +571,10 @@ class MainWindow(QMainWindow):
 
     def refresh_display(self, apply_beautify=False, is_preview=False, fade=False):
         if self.base_proj_img is None: return
+        
+        if is_preview:
+            QApplication.processEvents()
+            
         processed = self.apply_image_adjustments(self.base_proj_img, apply_beautify=apply_beautify)
         self.render_to_ui(processed, is_preview=is_preview, fade=fade)
 
@@ -654,7 +592,6 @@ class MainWindow(QMainWindow):
         h, w = preview_rgb.shape[:2]
         q_img = QImage(preview_rgb.data, w, h, preview_rgb.shape[2] * w, QImage.Format.Format_RGB888)
         
-        # Passes the image to the label, which handles the crossfade and crisp vector overlay
         self.image_label.set_master_pixmap(QPixmap.fromImage(q_img), img, fade=fade)
 
     def update_view(self):
@@ -674,7 +611,6 @@ class MainWindow(QMainWindow):
         if round(self.float_yaw) != yaw: self.float_yaw = float(yaw)
         if round(self.float_pitch) != pitch: self.float_pitch = float(pitch)
         
-        # 400px - No fade, instant feedback for dragging
         self.base_proj_img = self.projector.get_projection(self.float_yaw, self.float_pitch, roll, self.get_fov(), self.get_aspect_ratio(), preview_width=400)
         self.refresh_display(apply_beautify=False, is_preview=False, fade=False)
         
@@ -684,7 +620,6 @@ class MainWindow(QMainWindow):
         if not self.projector: return
         roll = self.sliders['roll'].value()
         
-        # 800px - Crossfades in
         self.base_proj_img = self.projector.get_projection(self.float_yaw, self.float_pitch, roll, self.get_fov(), self.get_aspect_ratio(), preview_width=800)
         self.refresh_display(apply_beautify=False, is_preview=False, fade=True)
         
@@ -694,7 +629,6 @@ class MainWindow(QMainWindow):
         if not self.projector: return
         roll = self.sliders['roll'].value()
         
-        # 1200px - Crossfades in
         self.base_proj_img = self.projector.get_projection(self.float_yaw, self.float_pitch, roll, self.get_fov(), self.get_aspect_ratio(), preview_width=1200)
         self.refresh_display(apply_beautify=False, is_preview=False, fade=True)
         
@@ -704,7 +638,6 @@ class MainWindow(QMainWindow):
         if not self.projector: return
         roll = self.sliders['roll'].value()
         
-        # 1600px - Final Preview + Beautify (if enabled). Crossfades in.
         self.base_proj_img = self.projector.get_projection(self.float_yaw, self.float_pitch, roll, self.get_fov(), self.get_aspect_ratio(), preview_width=1600)
         self.refresh_display(apply_beautify=self.chk_beautify.isChecked(), is_preview=True, fade=True)
 
