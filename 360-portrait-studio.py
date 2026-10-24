@@ -15,10 +15,10 @@ import time
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                              QHBoxLayout, QPushButton, QLabel, QSlider, QFileDialog, QComboBox,
                              QSizePolicy, QCheckBox, QMessageBox, QToolButton, QDialog)
-from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QUrl
-from PyQt6.QtGui import QImage, QPixmap, QShortcut, QKeySequence, QDesktopServices
+from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QUrl, QVariantAnimation
+from PyQt6.QtGui import QImage, QPixmap, QShortcut, QKeySequence, QDesktopServices, QPainter, QColor, QPen
 
-VERSION = "0.8"
+VERSION = "0.9"
 
 class EquirectangularProjector:
     def __init__(self, image_path):
@@ -67,30 +67,101 @@ class InteractiveImageLabel(QLabel):
 
     def __init__(self):
         super().__init__()
-        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.setStyleSheet("background-color: #111; color: #777; font-size: 16px;")
-        self.setText("Load a 360 Image to begin.")
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.setMinimumSize(400, 400)
         self.last_pos = None
         self.current_pixmap = None
-        self.eyedropper_mode = False
+        self.old_pixmap = None
         self.raw_preview_img = None 
+        
+        self.show_grid = False
+        self.is_preview = False
+        self.eyedropper_mode = False
 
-    def set_master_pixmap(self, pixmap, raw_img):
-        self.current_pixmap = pixmap
+        # Fade Animation setup - tethered to 'self' to prevent garbage collection crashes
+        self.fade_anim = QVariantAnimation(self)
+        self.fade_anim.setDuration(250)
+        self.fade_anim.valueChanged.connect(self._update_fade)
+        self.fade_anim.finished.connect(self._fade_finished)
+        self.fade_alpha = 1.0
+
+    def set_master_pixmap(self, pixmap, raw_img, fade=False):
         self.raw_preview_img = raw_img
-        self.update_display()
+        if fade and self.current_pixmap:
+            self.old_pixmap = self.current_pixmap
+            self.current_pixmap = pixmap
+            self.fade_anim.setStartValue(0.0)
+            self.fade_anim.setEndValue(1.0)
+            self.fade_anim.start()
+        else:
+            self.fade_anim.stop()
+            self.old_pixmap = None
+            self.current_pixmap = pixmap
+            self.fade_alpha = 1.0
+            self.update()
 
-    def update_display(self):
-        if self.current_pixmap:
-            scaled_pixmap = self.current_pixmap.scaled(
-                self.size(), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
-            super().setPixmap(scaled_pixmap)
+    def _update_fade(self, value):
+        self.fade_alpha = value
+        self.update()
 
-    def resizeEvent(self, event):
-        self.update_display()
-        super().resizeEvent(event)
+    def _fade_finished(self):
+        self.old_pixmap = None
+        self.fade_alpha = 1.0
+        self.update()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        painter.fillRect(self.rect(), QColor("#111"))
+
+        if not self.current_pixmap and not self.old_pixmap:
+            painter.setPen(QColor("#777"))
+            font = painter.font()
+            font.setPixelSize(16)
+            painter.setFont(font)
+            painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, "Load a 360 Image to begin.")
+            return
+
+        def draw_pm(pm, alpha):
+            scaled = pm.scaled(self.size(), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+            x = (self.width() - scaled.width()) // 2
+            y = (self.height() - scaled.height()) // 2
+            painter.setOpacity(alpha)
+            painter.drawPixmap(x, y, scaled)
+            return x, y, scaled.width(), scaled.height()
+
+        x, y, w, h = 0, 0, 0, 0
+        if self.old_pixmap:
+            draw_pm(self.old_pixmap, 1.0)
+            x, y, w, h = draw_pm(self.current_pixmap, self.fade_alpha)
+        elif self.current_pixmap:
+            x, y, w, h = draw_pm(self.current_pixmap, 1.0)
+
+        if self.show_grid and w > 0:
+            painter.setOpacity(0.4)
+            pen = QPen(Qt.GlobalColor.white, max(1, h // 400))
+            painter.setPen(pen)
+            
+            painter.drawLine(x + w//3, y, x + w//3, y + h)
+            painter.drawLine(x + 2*w//3, y, x + 2*w//3, y + h)
+            painter.drawLine(x, y + h//3, x + w, y + h//3)
+            painter.drawLine(x, y + 2*h//3, x + w, y + 2*h//3)
+            
+            painter.setOpacity(0.6)
+            cx, cy = x + w//2, y + h//2
+            c_len = min(w, h) // 20
+            painter.drawLine(cx - c_len, cy, cx + c_len, cy)
+            painter.drawLine(cx, cy - c_len, cx, cy + c_len)
+
+        if self.is_preview and w > 0:
+            painter.setOpacity(1.0)
+            painter.setPen(QColor(0, 215, 255))
+            font = painter.font()
+            font.setPixelSize(24)
+            font.setBold(True)
+            painter.setFont(font)
+            painter.drawText(x + 20, y + 40, "PREVIEW")
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
@@ -187,11 +258,9 @@ class AboutDialog(QDialog):
 
     def check_for_updates(self):
         try:
-            # Append a timestamp to the URL to bypass GitHub's CDN caching
             base_url = "https://raw.githubusercontent.com/Cat5TV/360-portrait-studio/refs/heads/main/currentversion.json"
             url = f"{base_url}?nocache={int(time.time())}"
             
-            # Add headers to explicitly request no caching
             req = urllib.request.Request(url, headers={
                 'User-Agent': 'Mozilla/5.0',
                 'Cache-Control': 'no-cache',
@@ -250,19 +319,20 @@ class MainWindow(QMainWindow):
         self.last_load_dir = ""
         self.last_export_dir = ""
         
-        self.fast_timer = QTimer()
+        # Tethered timers to prevent C++ garbage collection crashes
+        self.fast_timer = QTimer(self)
         self.fast_timer.setSingleShot(True)
         self.fast_timer.timeout.connect(self._render_fast)
 
-        self.medium_timer = QTimer()
+        self.medium_timer = QTimer(self)
         self.medium_timer.setSingleShot(True)
         self.medium_timer.timeout.connect(self._render_medium)
 
-        self.high_timer = QTimer()
+        self.high_timer = QTimer(self)
         self.high_timer.setSingleShot(True)
         self.high_timer.timeout.connect(self._render_high)
         
-        self.ultra_timer = QTimer()
+        self.ultra_timer = QTimer(self)
         self.ultra_timer.setSingleShot(True)
         self.ultra_timer.timeout.connect(self._render_ultra)
 
@@ -365,6 +435,14 @@ class MainWindow(QMainWindow):
         QShortcut(QKeySequence(Qt.Key.Key_Down), self).activated.connect(lambda: self.nudge_view(0, -0.02))
 
     def reset_all_settings(self):
+        # Block signals to completely prevent render storms upon resetting
+        self.aspect_combo.blockSignals(True)
+        self.orient_combo.blockSignals(True)
+        self.chk_grid.blockSignals(True)
+        self.chk_beautify.blockSignals(True)
+        for s in self.sliders.values():
+            s.blockSignals(True)
+            
         self.aspect_combo.setCurrentIndex(0)
         self.orient_combo.setCurrentIndex(0)
         self.chk_grid.setChecked(False)
@@ -387,6 +465,16 @@ class MainWindow(QMainWindow):
         
         self.sliders['dof'].setValue(0)
         self.sliders['vig'].setValue(0)
+        
+        # Restore signals and fire one singular, optimized update
+        self.aspect_combo.blockSignals(False)
+        self.orient_combo.blockSignals(False)
+        self.chk_grid.blockSignals(False)
+        self.chk_beautify.blockSignals(False)
+        for s in self.sliders.values():
+            s.blockSignals(False)
+            
+        self.update_view()
 
     def show_about(self):
         dlg = AboutDialog(self)
@@ -469,7 +557,6 @@ class MainWindow(QMainWindow):
             self.last_load_dir = os.path.dirname(file_name)
             self.projector = EquirectangularProjector(file_name)
             self.reset_all_settings()
-            self.update_view()
 
     def get_aspect_ratio(self):
         ratios = [6.0/4.0, 7.0/5.0, 10.0/8.0, 16.0/9.0, 1.0]
