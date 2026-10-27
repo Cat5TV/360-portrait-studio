@@ -1,0 +1,25 @@
+{
+    "sliders": {
+        "yaw": 163,
+        "pitch": -3,
+        "roll": 0,
+        "zoom": 90,
+        "temp": -8,
+        "bright": 10,
+        "contrast": 0,
+        "shadows": 6,
+        "highlights": 30,
+        "sat": 0,
+        "clarity": 0,
+        "noise": 29,
+        "beautify": 10,
+        "sharpen": 13,
+        "dof": 0,
+        "vig": 5,
+        "dewarp": 9
+    },
+    "aspect": 0,
+    "orient": 0,
+    "float_yaw": 162.83749999999873,
+    "float_pitch": -2.9312499999999995
+}

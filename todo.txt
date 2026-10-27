@@ -1,0 +1,5 @@
+- Expressly disallow overwriting any image that was not created by this tool. Prevents accidental overwrite of 360 source image with cropped 2D version.
+- Try to get the logo icon working in interface instead of the generic icon that is currently displayed.
+- Fix EXIF data not saving correctly.
+- Allow drag-and-drop images to load.
+- Include loaded image filename in title bar.

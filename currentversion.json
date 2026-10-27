@@ -1,12 +1,11 @@
 {
-"currentVersion": "0.9",
-"releaseDate": "2026-10-23",
-"author": "Robbie Ferguson",
-"updateSummary": "Progressive loading",
-"changes": [
-"Image loads progressively and provides high-res preview.",
-"Grid and crosshair overlay are now a vector separate of the preview generation."
-],
-"downloadUrl": "https://github.com/Cat5TV/360-portrait-studio/releases/latest",
-"mandatoryUpdate": false
+  "currentVersion": "1.0",
+  "releaseDate": "2026-10-27",
+  "author": "Robbie Ferguson",
+  "updateSummary": "First major release.",
+  "changes": [
+    "First complete release."
+  ],
+  "downloadUrl": "https://github.com/Cat5TV/360-portrait-studio/releases/latest",
+  "mandatoryUpdate": false
 }
