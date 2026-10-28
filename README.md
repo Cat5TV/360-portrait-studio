@@ -55,7 +55,7 @@ Whether you've purchased a [DJI OSMO 360 II](https://link.amazon/A0bJE05Ol), an 
 
 ### Do-It-Yourself Like a L337 H4x0r (Source Code)
 
-1. Ensure Python 3 is installed on your system.
+1. Ensure Python 3 is installed.
 2. Install the required dependencies:
    `pip install -r requirements.txt`
 3. Launch the application:
