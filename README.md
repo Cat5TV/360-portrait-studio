@@ -47,13 +47,13 @@ Whether you've purchased a [DJI OSMO 360 II](https://link.amazon/A0bJE05Ol), an 
 
 ## Run Baldnerd's 360 Portrait Studio
 
-### Just Download and Run (Binaries)
+### Just Download and Run It Like a Pro (Binaries)
 
 * For Windows: Ready
 * For Linux: Ready
 * For Mac: Working On It
 
-### From Source
+### Do-It-Yourself Like a L337 H4x0r (Source Code)
 
 1. Ensure Python 3 is installed on your system.
 2. Install the required dependencies:
