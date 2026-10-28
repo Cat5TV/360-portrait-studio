@@ -269,6 +269,7 @@ class AboutDialog(QDialog):
         <p>I build this software and many other creative projects to share with the community for free. 
         If you find it useful, please consider supporting my work!</p>
         <p>Visit <a href="https://baldnerd.com/">https://baldnerd.com/</a> to learn more.</p>
+        <p>macOS Binary thanks to <b>Bill Marshall</b>.</p>
         """
         lbl = QLabel(text)
         lbl.setOpenExternalLinks(True)
