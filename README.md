@@ -49,8 +49,8 @@ Whether you've purchased a [DJI OSMO 360 II](https://link.amazon/A0bJE05Ol), an 
 
 ### Just Download and Run It Like a Pro (Binaries)
 
-* For Windows: [Buy Now](https://www.patreon.com/Category5/posts/download-360-173554469)
-* For Linux: [Buy Now](https://www.patreon.com/Category5/posts/download-360-173554469)
+* For Windows: [Buy Now](https://www.patreon.com/Category5/posts/download-360-173554469) (Free Perk for Cat5TV Patrons)
+* For Linux: [Buy Now](https://www.patreon.com/Category5/posts/download-360-173554469) (Free Perk for Cat5TV Patrons)
 * For Mac: Working On It
 
 ### Do-It-Yourself Like a L337 H4x0r (Source Code)
