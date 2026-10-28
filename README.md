@@ -6,6 +6,15 @@ Create beautiful 2D images from 360-degree equirectangular sources.
 
 **Baldnerd's 360 Portrait Studio** is a desktop application designed to bridge the gap between immersive 360-degree photography and traditional 2D formats. It allows photographers to load full spherical photos, perfectly frame a specific subject, apply professional-grade color corrections, and export standard, flat images ready for print or social media.
 
+![Application Screenshot](assets/360-portrait-studio-1.0.jpg)
+
+**TURN THIS:**
+![Equirectangular 360-Degree Projection](assets/sample-equirectangular.jpg)
+
+**INTO THIS:**
+![4x6 Horizontal Export from Baldnerd's 360 Portrait Studio](samples/Exports/Fall%20Canopy%20Country%20Road.jpg)
+
+
 ## Key Features
 
 **Virtual Camera Framing**
