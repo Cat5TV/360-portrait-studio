@@ -47,11 +47,11 @@ Whether you've purchased a [DJI OSMO 360 II](https://link.amazon/A0bJE05Ol), an 
 
 ## Run Baldnerd's 360 Portrait Studio
 
-### From Binaries
+### Just Download and Run (Binaries)
 
-* For Windows: 
-* For Linux: Coming Soon
-* For Mac: Coming Soon
+* For Windows: Ready
+* For Linux: Ready
+* For Mac: Working On It
 
 ### From Source
 
