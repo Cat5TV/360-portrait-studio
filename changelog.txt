@@ -1,0 +1,11 @@
+1.0 - Initial release.
+
+1.1 - October 31, 2026
+    - Fix EXIF data not saving correctly.
+    - Replace the generic icon in the titlebar with the Baldnerd's 360 Portrait Studio icon.
+    - Include loaded image filename in title bar.
+    - Protect against accidentally overwriting source images and photos not created by Baldnerd's 360 Portrait Studio.
+    - Can now drag-and-drop images onto the application to load an image.
+    - Added Image Info dialog which shows EXIF data, geocoordinates on OpenStreetMap, and both source and export dimensions.
+    - Improved the quality of the brand and camera model detection and included links to buy.
+    - Minor improvements to the About dialog.

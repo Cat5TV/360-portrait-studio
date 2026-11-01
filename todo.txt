@@ -1,8 +1,2 @@
-- Expressly disallow overwriting any image that was not created by this tool. Prevents accidental overwrite of 360 source image with cropped 2D version.
-- Try to get the logo icon working in interface instead of the generic icon that is currently displayed.
-- Fix EXIF data not saving correctly.
-- Allow drag-and-drop images to load.
-- Include loaded image filename in title bar.
 - Create a custom open dialogue that features preview image of each photo in a folder. This will need to use some form of cache for files stored on NAS / over VPN else they will take forever to load.
 - In open dialogue, have an indicator to show any photos that have already been opened vs. those that have never been opened (make it easier to go through many files).
-- Detect if geocoordinates exist in the file and if so, allow viewing the location on a map.

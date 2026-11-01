@@ -13,6 +13,7 @@ import urllib.request
 import json
 import time
 import copy
+from datetime import datetime
 
 try:
     import piexif
@@ -25,9 +26,75 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QHBoxLayout, QPushButton, QLabel, QSlider, QFileDialog, QComboBox,
                              QSizePolicy, QCheckBox, QMessageBox, QToolButton, QDialog, QScrollArea)
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QUrl, QVariantAnimation, QSettings
-from PyQt6.QtGui import QImage, QPixmap, QShortcut, QKeySequence, QDesktopServices, QPainter, QColor, QPen
+from PyQt6.QtGui import QImage, QPixmap, QShortcut, QKeySequence, QDesktopServices, QPainter, QColor, QPen, QIcon
 
-VERSION = "1.0"
+VERSION = "1.1"
+
+
+# ==============================================================================
+# Camera Identification & Affiliate Dictionary
+# translates messy raw EXIF identifiers into readable consumer branding
+# and appends optional referral links for purchase.
+# ==============================================================================
+RECOGNIZED_CAMERAS = {
+    # DJI 360 & Drone Series
+    ("osmo", "oq002"): { # Tested
+        "maker": "DJI",
+        "model": "Osmo 360 II",
+        "url": "https://link.amazon/B0bku4lo0"
+    },
+    ("dji", "osmo 360"): {
+        "maker": "DJI",
+        "model": "Osmo 360",
+        "url": "https://link.amazon/B02ZCXbKD"
+    },
+    ("dji", "fca188"): { # Tested
+        "maker": "DJI",
+        "model": "Avata 360 Drone",
+        "url": "https://link.amazon/B03FJWVvK"
+    },
+    # Insta360 Series
+    ("insta360", "x4"): {
+        "maker": "Insta360",
+        "model": "X4 8K 360",
+        "url": "https://link.amazon/B0iBwAPuV"
+    },
+    ("insta360", "x3"): {
+        "maker": "Insta360",
+        "model": "X3 360",
+        "url": "https://link.amazon/B0bAzirmP"
+    },
+    ("insta360", "one x2"): {
+        "maker": "Insta360",
+        "model": "ONE X2 360",
+        "url": "https://link.amazon/B0cG3Xpqq"
+    },
+    ("insta360", "one rs 1-inch 360"): {
+        "maker": "Insta360",
+        "model": "ONE RS 1-Inch 360 Edition",
+        "url": "https://link.amazon/B0dUG13Bz"
+    },
+    # GoPro 360 Series
+    ("gopro", "max"): {
+        "maker": "GoPro",
+        "model": "MAX 360",
+        "url": "https://link.amazon/B0aGMMq4s"
+    },
+    ("gopro", "fusion"): {
+        "maker": "GoPro",
+        "model": "Fusion 360",
+        "url": "https://link.amazon/B05hsilgt"
+    }
+}
+
+
+def resource_path(relative_path):
+    """ Get absolute path to resource, works for dev and for PyInstaller """
+    try:
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
 
 class EquirectangularProjector:
     def __init__(self, image_path):
@@ -263,13 +330,13 @@ class AboutDialog(QDialog):
 
         text = f"""
         <h3>Baldnerd's 360 Portrait Studio v{VERSION}</h3>
-        <p>Created by Robbie Ferguson // The Bald Nerd</p>
-        <p>Robbie is the founder of Category5 TV Network, host of several technology broadcasts, 
-        and the creator of NEMS Linux.</p>
-        <p>I build this software and many other creative projects to share with the community for free. 
-        If you find it useful, please consider supporting my work!</p>
-        <p>Visit <a href="https://baldnerd.com/">https://baldnerd.com/</a> to learn more.</p>
+        <p>Created by <b>Robbie Ferguson // The Bald Nerd</b>.</p>
         <p>macOS Binary thanks to <b>Bill Marshall</b>.</p>
+        <p>Robbie is the founder of <a href="https://Category5.TV/">Category5 TV Network</a>, host of several technology broadcasts,
+        and the creator of <a href="https://nemslinux.com/">NEMS Linux</a>.</p>
+        <p>I build this software and many other creative projects to share with the community.
+        If you find it useful, please consider supporting my work!</p>
+        <p>Visit <a href="https://baldnerd.com/">baldnerd.com</a> to learn more about me.</p>
         """
         lbl = QLabel(text)
         lbl.setOpenExternalLinks(True)
@@ -333,7 +400,7 @@ class AboutDialog(QDialog):
                     msg += "</ul><br>"
 
                 download_url = data.get("downloadUrl", "https://github.com/Cat5TV/360-portrait-studio")
-                msg += f"Please visit the <a href='{download_url}'>repository</a> to download the latest release."
+                msg += f"Please <a href='{download_url}'>download the latest release</a>."
 
                 box = QMessageBox(self)
                 box.setWindowTitle("Update Available")
@@ -346,6 +413,186 @@ class AboutDialog(QDialog):
         except Exception as e:
             QMessageBox.warning(self, "Update Check Failed", f"Could not connect to the update server.\n\nError: {e}")
 
+class ImageInfoDialog(QDialog):
+    # Added src_dims to the initialization
+    def __init__(self, parent, file_path, current_exif, export_dims, src_dims):
+        super().__init__(parent)
+        self.setWindowTitle("Image Information")
+        self.setMinimumWidth(400)
+
+        layout = QVBoxLayout(self)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        content = QWidget()
+        scroll_layout = QVBoxLayout(content)
+
+        # Pull basic image meta (O(1) file system touch for sizing)
+        short_name = os.path.basename(file_path)
+        img_size_bytes = os.path.getsize(file_path)
+        img_size_mb = img_size_bytes / (1024 * 1024)
+
+        # Retrieve width and height without OpenCV re-reads
+        w, h = src_dims
+
+        # Metadata parsing (Safety-checked defaults)
+        make, model, exif_datetime, date_taken, shutter, f_stop, iso = "Unknown", "Unknown", "Unknown", "Unknown", "Unknown", "Unknown", "Unknown"
+        lat_val, lon_val, map_url = None, None, None
+        camera_buy_url = None
+
+        if current_exif:
+            # Camera details
+            try: make = current_exif.get("0th", {}).get(piexif.ImageIFD.Make, b"").decode('utf-8').strip()
+            except Exception: pass
+            try: model = current_exif.get("0th", {}).get(piexif.ImageIFD.Model, b"").decode('utf-8').strip()
+            except Exception: pass
+
+            # Run normalization & affiliate URL lookup against recognizing array
+            lookup_key = (make.lower(), model.lower())
+            if lookup_key in RECOGNIZED_CAMERAS:
+                camera_info = RECOGNIZED_CAMERAS[lookup_key]
+                make = camera_info["maker"]
+                model = camera_info["model"]
+                camera_buy_url = camera_info["url"]
+
+            def format_exif_date(raw_date_bytes):
+                if not raw_date_bytes:
+                    return "Unknown"
+                try:
+                    # Safely convert bytes to string
+                    raw_str = raw_date_bytes.decode('utf-8', 'ignore').strip() if isinstance(raw_date_bytes, bytes) else str(raw_date_bytes).strip()
+
+                    # Ensure standard EXIF datetime string is normalized (YYYY:MM:DD HH:MM:SS)
+                    # Often includes sub-second or time-zone suffixes we want to strip
+                    clean_str = raw_str.split('.')[0].split('+')[0].split('-')[0].strip()
+
+                    # Target correct standard EXIF format using colons: YYYY:MM:DD HH:MM:SS
+                    # NOTE: %Y:%m:%d is required. Colons are native, NOT hyphens or slashes.
+                    parsed_dt = datetime.strptime(clean_str, "%Y:%m:%d %H:%M:%S")
+
+                    # Returns fully formatted: October 31, 2026 01:35 PM
+                    return parsed_dt.strftime("%B %d, %Y %I:%M %p")
+                except Exception as e:
+                    # If EXIF format didn't match standard, print the parsing crash to terminal for inspection,
+                    # and return raw values gracefully so the UI doesn't fail.
+                    print(f"Debug: EXIF date parsing failed for input '{raw_date_bytes}': {e}")
+                    return str(raw_str) if 'raw_str' in locals() else str(raw_date_bytes)
+
+            try:
+                datetime_val = current_exif.get("0th", {}).get(piexif.ImageIFD.DateTime)
+                exif_datetime = format_exif_date(datetime_val)
+            except Exception:
+                exif_datetime = "Unknown"
+
+            try:
+                date_taken_val = current_exif.get("Exif", {}).get(piexif.ExifIFD.DateTimeOriginal)
+                date_taken = format_exif_date(date_taken_val)
+            except Exception:
+                date_taken = "Unknown"
+
+            # Photo exposure settings
+            try:
+                shut_data = current_exif.get("Exif", {}).get(piexif.ExifIFD.ExposureTime)
+                if shut_data: shutter = f"{shut_data[0]}/{shut_data[1]}s" if shut_data[0] != 1 else f"1/{shut_data[1]}s"
+            except Exception: pass
+            try:
+                f_data = current_exif.get("Exif", {}).get(piexif.ExifIFD.FNumber)
+                if f_data: f_stop = f"f/{f_data[0]/f_data[1]:.1f}"
+            except Exception: pass
+            try:
+                iso_data = current_exif.get("Exif", {}).get(piexif.ExifIFD.ISOSpeedRatings)
+                if iso_data: iso = str(iso_data)
+            except Exception: pass
+
+            # Coordinates extraction (converts Rational HMS to decimal)
+            try:
+                gps = current_exif.get("GPS", {})
+                lat_ref = gps.get(piexif.GPSIFD.GPSLatitudeRef)
+                lat = gps.get(piexif.GPSIFD.GPSLatitude)
+                lon_ref = gps.get(piexif.GPSIFD.GPSLongitudeRef)
+                lon = gps.get(piexif.GPSIFD.GPSLongitude)
+
+                if lat and lon and lat_ref and lon_ref:
+                    # Rational decoding
+                    def to_decimal(val, ref):
+                        deg = val[0][0] / val[0][1]
+                        min_val = val[1][0] / val[1][1]
+                        sec = val[2][0] / val[2][1]
+                        decimal = deg + (min_val / 60.0) + (sec / 3600.0)
+                        if ref in [b'S', b'W', 'S', 'W']:
+                            decimal = -decimal
+                        return decimal
+
+                    lat_val = to_decimal(lat, lat_ref)
+                    lon_val = to_decimal(lon, lon_ref)
+
+                    # Validate against 0,0x0,0 default strings
+                    if abs(lat_val) > 0.0001 or abs(lon_val) > 0.0001:
+                        map_url = f"https://www.openstreetmap.org/?mlat={lat_val}&mlon={lon_val}#map=16/{lat_val}/{lon_val}"
+            except Exception:
+                lat_val, lon_val, map_url = None, None, None
+
+        # Fallback to general file metadata timestamp if EXIF was empty
+        display_time = date_taken if date_taken and date_taken != "Unknown" else (exif_datetime if exif_datetime and exif_datetime != "Unknown" else "Unknown")
+
+        # Setup display format with dynamic referral logic for known devices
+        maker_display = make
+        model_display = model
+        if camera_buy_url:
+            maker_display = f"{make}"
+            model_display = f'{model} <a href="{camera_buy_url}" style="color: #FF9900; font-size: 11px; text-decoration: none;">🛒 [View on Amazon]</a>'
+
+        info_html = f"""
+        <h2>File</h2>
+        <p>
+          <b>Filename:</b> {short_name}
+          <br />
+          <b>Timestamp:</b> {display_time}
+          <br />
+          <b>Source Dimensions:</b> {w} x {h}
+          <br />
+          <b>Source File Size:</b> {img_size_mb:.2f} MB
+          <br />
+          <b>Current Export Dimensions:</b> {export_dims[0]} x {export_dims[1]} pixels
+        </p>
+        <hr>
+        <h2>Camera</h2>
+        <p>
+          <b>Camera:</b> {maker_display} {model_display}
+          <br />
+          <b>Aperture:</b> {f_stop}
+          <br />
+          <b>Shutter Speed:</b> {shutter}
+          <br />
+          <b>ISO Speed:</b> {iso}
+        </p>
+        """
+
+        if map_url:
+            info_html += f"""
+            <hr>
+            <h2>Location</h2>
+            <p>
+              <b>Geocoordinates:</b> {lat_val:.6f}, {lon_val:.6f}
+              <br />
+              <a href="{map_url}">🌐 View in OpenStreetMap</a>
+            </p>
+            """
+
+        lbl = QLabel(info_html)
+        lbl.setOpenExternalLinks(True)
+        lbl.setWordWrap(True)
+        lbl.setTextFormat(Qt.TextFormat.RichText)
+        scroll_layout.addWidget(lbl)
+
+        content.setLayout(scroll_layout)
+        scroll.setWidget(content)
+        layout.addWidget(scroll)
+
+        close_btn = QPushButton("Close")
+        close_btn.clicked.connect(self.accept)
+        layout.addWidget(close_btn)
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -353,6 +600,14 @@ class MainWindow(QMainWindow):
         self.resize(1300, 900)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.projector = None
+
+        if sys.platform == "darwin":
+            self.setWindowIcon(QIcon(resource_path("assets/icon.icns")))
+        else:
+            self.setWindowIcon(QIcon(resource_path("assets/icon.ico")))
+
+        # Enable drag-and-drop file loading
+        self.setAcceptDrops(True)
 
         self.float_yaw = 0.0
         self.float_pitch = 0.0
@@ -416,6 +671,12 @@ class MainWindow(QMainWindow):
         self.btn_import.setMinimumHeight(35)
         self.btn_import.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
+        self.btn_info = QPushButton("Image Info")
+        self.btn_info.clicked.connect(self.show_image_info)
+        self.btn_info.setMinimumHeight(35)
+        self.btn_info.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.btn_info.setEnabled(False) # Start disabled until an image is loaded
+
         self.btn_about = QPushButton("About")
         self.btn_about.clicked.connect(self.show_about)
         self.btn_about.setMinimumHeight(35)
@@ -424,6 +685,7 @@ class MainWindow(QMainWindow):
         top_btn_layout.addWidget(self.btn_load)
         top_btn_layout.addWidget(self.btn_import)
         top_btn_layout.addWidget(self.btn_about)
+        top_btn_layout.addWidget(self.btn_info)
         control_panel.addLayout(top_btn_layout)
 
         row_two_btns = QHBoxLayout()
@@ -552,6 +814,43 @@ class MainWindow(QMainWindow):
             self._stop_bypass()
         super().keyReleaseEvent(event)
 
+    # Drop handler for opening files by dropping onto the window
+    def dragEnterEvent(self, event):
+        if event.mimeData().hasUrls():
+            urls = event.mimeData().urls()
+            if any(url.toLocalFile().lower().endswith(('.jpg', '.jpeg', '.png', '.hdr', '.exr', '.tiff', '.tif', '.webp')) for url in urls):
+                event.acceptProposedAction()
+
+    def dragMoveEvent(self, event):
+        event.acceptProposedAction()
+
+    def dropEvent(self, event):
+        for url in event.mimeData().urls():
+            file_path = url.toLocalFile()
+            if file_path.lower().endswith(('.jpg', '.jpeg', '.png', '.hdr', '.exr', '.tiff', '.tif', '.webp')):
+                self.load_image_from_path(file_path)
+                break
+    # /Drop handler for opening files by dropping onto the window
+
+    def show_image_info(self):
+        if not self.projector: return
+
+        # Determine planned export resolution using current settings & source dimensions
+        yaw, pitch, roll = self.sliders['yaw'].value(), self.sliders['pitch'].value(), self.sliders['roll'].value()
+        dewarp = self.sliders['dewarp'].value()
+
+        # Use the mathematical pipeline logic to extract target export dimensions
+        pixels_per_degree = self.projector.width / 360.0
+        out_w = int(self.get_fov() * pixels_per_degree)
+        out_h = int(out_w / self.get_aspect_ratio())
+
+        # Grab dimensions directly from the projector
+        src_dimensions = (self.projector.width, self.projector.height)
+
+        # Pass our pre-loaded coordinates and properties to keep the UI snappy
+        dlg = ImageInfoDialog(self, self.projector.image_path, self.current_exif, (out_w, out_h), src_dimensions)
+        dlg.exec()
+
     def _start_bypass(self):
         if not self.projector: return
         self.is_bypassed = True
@@ -643,6 +942,9 @@ class MainWindow(QMainWindow):
 
     def reset_all_settings(self):
         self.is_resetting = True
+
+        if not self.projector:
+            self.btn_info.setEnabled(False)
 
         self.aspect_combo.setCurrentIndex(0)
         self.orient_combo.setCurrentIndex(0)
@@ -782,26 +1084,35 @@ class MainWindow(QMainWindow):
         file_filter = "Image Files (*.jpg *.jpeg *.JPG *.JPEG *.png *.PNG *.hdr *.exr *.tiff *.tif *.webp *.WEBP)"
         file_name, _ = QFileDialog.getOpenFileName(self, "Open 360 Image", self.last_load_dir, file_filter)
         if file_name:
-            self.last_load_dir = os.path.dirname(file_name)
-            self.settings.setValue("last_load_dir", self.last_load_dir)
+            self.load_image_from_path(file_name)
 
-            self.image_label.set_master_pixmap(None, None)
-            self.image_label.setText("Loading... Please Wait.")
-            self.projector = None
-            QApplication.processEvents()
+    def load_image_from_path(self, file_name):
+        self.last_load_dir = os.path.dirname(file_name)
+        self.settings.setValue("last_load_dir", self.last_load_dir)
 
-            self.projector = EquirectangularProjector(file_name)
+        # Extract the filename and update the window title
+        short_name = os.path.basename(file_name)
+        self.setWindowTitle(f"Baldnerd's 360 Portrait Studio v{VERSION} - {short_name}")
 
-            self.current_exif = None
-            if HAS_PIEXIF:
-                try:
-                    self.current_exif = piexif.load(file_name)
-                except Exception:
-                    pass
+        self.image_label.set_master_pixmap(None, None)
+        self.image_label.setText("Loading... Please Wait.")
+        self.projector = None
+        QApplication.processEvents()
 
-            self.history.clear()
-            self.history_index = -1
-            self.reset_all_settings()
+        self.projector = EquirectangularProjector(file_name)
+
+        self.current_exif = None
+        if HAS_PIEXIF:
+            try:
+                self.current_exif = piexif.load(file_name)
+            except Exception:
+                pass
+
+        self.btn_info.setEnabled(True) # Enables info now that projector & EXIF exist
+
+        self.history.clear()
+        self.history_index = -1
+        self.reset_all_settings()
 
     def import_settings(self):
         file_filter = "Settings or Images (*.json *.jpg *.jpeg *.png *.tiff *.tif *.webp)"
@@ -1073,6 +1384,27 @@ class MainWindow(QMainWindow):
                 save_path += ".webp"
 
             if os.path.exists(save_path):
+                is_current_source = os.path.abspath(save_path) == os.path.abspath(self.projector.image_path)
+
+                is_tool_export = False
+                json_sidecar = os.path.splitext(save_path)[0] + ".json"
+
+                if os.path.exists(json_sidecar):
+                    is_tool_export = True
+                elif HAS_PIEXIF and save_path.lower().endswith(('.jpg', '.jpeg')):
+                    try:
+                        target_exif = piexif.load(save_path)
+                        software = target_exif.get("0th", {}).get(piexif.ImageIFD.Software, b"").decode('utf-8', 'ignore')
+                        if "Baldnerd" in software:
+                            is_tool_export = True
+                    except Exception:
+                        pass
+
+                if is_current_source or not is_tool_export:
+                    QMessageBox.critical(self, "Overwrite Protected",
+                                         f"The file {os.path.basename(save_path)} appears to be an original source image.\n\nTo prevent accidental data loss, the software will only overwrite images that it previously exported.")
+                    return
+
                 reply = QMessageBox.question(self, "Overwrite File?",
                                              f"The file {os.path.basename(save_path)} already exists.\nAre you sure you want to overwrite it?",
                                              QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
@@ -1110,7 +1442,7 @@ class MainWindow(QMainWindow):
             except Exception as e:
                 print(f"Failed to write sidecar JSON file: {e}")
 
-            if HAS_PIEXIF and ext in ['.jpg', '.jpeg']:
+            if HAS_PIEXIF and (ext.endswith('.jpg') or ext.endswith('.jpeg')):
                 try:
                     clean_exif = {"0th":{}, "Exif":{}, "GPS":{}, "1st":{}, "thumbnail":None}
 

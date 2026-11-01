@@ -1,11 +1,18 @@
 {
-  "currentVersion": "1.0",
-  "releaseDate": "2026-10-27",
+  "currentVersion": "1.1",
+  "releaseDate": "2026-11-01",
   "author": "Robbie Ferguson",
-  "updateSummary": "First major release.",
+  "updateSummary": "Bug fixes, enhancements.",
   "changes": [
-    "First complete release."
+    "Fix EXIF data not saving correctly.",
+    "Replace the generic icon in the titlebar with the Baldnerd's 360 Portrait Studio icon.",
+    "Include loaded image filename in title bar.",
+    "Protect against accidentally overwriting source images and photos not created by Baldnerd's 360 Portrait Studio.",
+    "Can now drag-and-drop images onto the application to load an image.",
+    "Added Image Info dialog which shows EXIF data, geocoordinates on OpenStreetMap, and both source and export dimensions.",
+    "Improved the quality of the brand and camera model detection and included links to buy.",
+    "Minor improvements to the About dialog."
   ],
-  "downloadUrl": "https://github.com/Cat5TV/360-portrait-studio/releases/latest",
+  "downloadUrl": "https://www.patreon.com/Category5/posts/download-360-173554469",
   "mandatoryUpdate": false
 }
