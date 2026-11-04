@@ -4,6 +4,10 @@ by Robbie Ferguson // The Bald Nerd
 
 Create beautiful 2D images from 360-degree equirectangular sources.
 
+* For Windows: [Buy Now](https://www.patreon.com/Category5/posts/download-360-173554469) (Free Perk for Cat5TV Patrons)
+* For Linux: [Buy Now](https://www.patreon.com/Category5/posts/download-360-173554469) (Free Perk for Cat5TV Patrons)
+* For Mac: [Buy Now](https://www.patreon.com/Category5/posts/download-360-173554469) (Free Perk for Cat5TV Patrons)
+
 Whether you've purchased a [DJI OSMO 360 II](https://link.amazon/A0bJE05Ol), an [Insta 360 X6](https://link.amazon/B00bpMqKL) or even the airborne [DJI Avata 360](https://link.amazon/B00bpMqKL) drone, you'll end up with some incredible 360 photos that are difficult to edit or view on traditional displays, and even more difficult to print.
 
 **Baldnerd's 360 Portrait Studio** is a desktop application designed to bridge the gap between immersive 360-degree photography and traditional 2D formats. It allows photographers to load full spherical photos, perfectly frame a specific subject, apply professional-grade color corrections, and export standard, flat images ready for print or social media.
@@ -39,6 +43,9 @@ Whether you've purchased a [DJI OSMO 360 II](https://link.amazon/A0bJE05Ol), an 
 * **Instant Bypass:** Hold the `Spacebar` at any time to temporarily bypass all effects and compare your current edit to the raw image.
 * **Embedded Presets & Metadata:** The software preserves key EXIF data (GPS, Date Taken, Camera Model). It also embeds your exact slider settings directly into exported JPEG file.
 * **Import Settings:** Click "Import Settings" and select any previously exported photo to instantly load its exact look and apply it to your current image. 
+* **Drag-and-Drop Support:** Quickly load new 360 images by dragging and dropping them directly onto the application window.
+* **Advanced Image Info:** Click "Image Info" to view hidden image data such as capture details, camera settings, and planned export dimensions. If your photo contains GPS data, a privacy-focused OpenStreetMap link to the exact location is provided.
+* **Source Overwrite Protection:** Built-in safety checks block accidental overwriting of original 360 source files or images not created by the software.
 
 **Included Samples**
 * Experiment, practice or simply test the tool with provided sample 360 photos in the `samples` folder.
