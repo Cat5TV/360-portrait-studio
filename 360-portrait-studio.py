@@ -14,6 +14,11 @@ import json
 import time
 import copy
 from datetime import datetime
+import sqlite3
+import hashlib
+from PyQt6.QtCore import QStandardPaths, QThread, pyqtSignal, QSize, Qt
+from PyQt6.QtWidgets import (QListWidget, QListWidgetItem, QLineEdit, QListView)
+from PyQt6.QtGui import QBrush
 
 try:
     import piexif
@@ -28,7 +33,60 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QUrl, QVariantAnimation, QSettings
 from PyQt6.QtGui import QImage, QPixmap, QShortcut, QKeySequence, QDesktopServices, QPainter, QColor, QPen, QIcon
 
-VERSION = "1.1"
+VERSION = "1.2"
+
+# ==============================================================================
+# Cross-Platform SQLite Cache & History Manager
+# ==============================================================================
+CACHE_DIR = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.AppLocalDataLocation)
+APP_CACHE_DIR = os.path.join(CACHE_DIR, "Baldnerds360PortraitStudio")
+os.makedirs(APP_CACHE_DIR, exist_ok=True)
+DB_PATH = os.path.join(APP_CACHE_DIR, "image_cache.db")
+
+class DatabaseManager:
+    def __init__(self):
+        self.conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+        self.create_tables()
+
+    def create_tables(self):
+        self.conn.execute('''CREATE TABLE IF NOT EXISTS image_cache (
+                             file_path TEXT PRIMARY KEY,
+                             last_modified REAL,
+                             is_360 INTEGER,
+                             is_opened INTEGER,
+                             thumb_path TEXT)''')
+        self.conn.commit()
+
+    def get_file_info(self, file_path, current_mtime):
+        cursor = self.conn.execute("SELECT last_modified, is_360, is_opened, thumb_path FROM image_cache WHERE file_path=?", (file_path,))
+        row = cursor.fetchone()
+        if row and row[0] == current_mtime:
+            return {"is_360": bool(row[1]), "is_opened": bool(row[2]), "thumb_path": row[3]}
+        return None
+
+    def update_file_info(self, file_path, last_modified, is_360, is_opened, thumb_path):
+        self.conn.execute('''INSERT OR REPLACE INTO image_cache 
+                             (file_path, last_modified, is_360, is_opened, thumb_path)
+                             VALUES (?, ?, ?, ?, ?)''', 
+                          (file_path, last_modified, int(is_360), int(is_opened), thumb_path))
+        self.conn.commit()
+
+    def mark_opened(self, file_path):
+        self.conn.execute("UPDATE image_cache SET is_opened = 1 WHERE file_path=?", (file_path,))
+        self.conn.commit()
+
+    def prune_missing_files(self):
+        # Maintenance task to clear orphaned file references from cache
+        cursor = self.conn.execute("SELECT file_path, thumb_path FROM image_cache")
+        for row in cursor.fetchall():
+            if not os.path.exists(row[0]):
+                self.conn.execute("DELETE FROM image_cache WHERE file_path=?", (row[0],))
+                if os.path.exists(row[1]):
+                    try: os.remove(row[1])
+                    except: pass
+        self.conn.commit()
+
+DB_MANAGER = DatabaseManager()
 
 
 # ==============================================================================
@@ -95,6 +153,65 @@ def resource_path(relative_path):
     except Exception:
         base_path = os.path.abspath(".")
     return os.path.join(base_path, relative_path)
+
+class ThumbnailWorker(QThread):
+    thumb_ready = pyqtSignal(str, str, bool, bool) # file_path, thumb_path, is_360, is_opened
+    finished_dir = pyqtSignal()
+
+    def __init__(self, directory):
+        super().__init__()
+        self.directory = directory
+        self.is_running = True
+
+    def stop(self):
+        self.is_running = False
+
+    def run(self):
+        valid_exts = ('.jpg', '.jpeg', '.png', '.hdr', '.exr', '.tiff', '.tif', '.webp')
+        try:
+            files = [f for f in os.listdir(self.directory) if f.lower().endswith(valid_exts)]
+        except:
+            self.finished_dir.emit()
+            return
+
+        for f in files:
+            if not self.is_running: break
+
+            file_path = os.path.join(self.directory, f)
+            try: mtime = os.path.getmtime(file_path)
+            except: continue
+
+            cached = DB_MANAGER.get_file_info(file_path, mtime)
+            if cached and os.path.exists(cached["thumb_path"]):
+                self.thumb_ready.emit(file_path, cached["thumb_path"], cached["is_360"], cached["is_opened"])
+                continue
+
+            # Generate new center-cropped thumb
+            try:
+                img = cv2.imread(file_path, cv2.IMREAD_UNCHANGED)
+                if img is None: continue
+
+                h, w = img.shape[:2]
+                is_360 = (w == h * 2) # Strict 2:1 360 Detection
+
+                thumb_size = 256
+                if w > h:
+                    start_x = (w - h) // 2
+                    cropped = img[:, start_x:start_x+h]
+                else:
+                    cropped = img
+
+                resized = cv2.resize(cropped, (thumb_size, thumb_size), interpolation=cv2.INTER_AREA)
+                path_hash = hashlib.md5(file_path.encode('utf-8')).hexdigest()
+                thumb_path = os.path.join(APP_CACHE_DIR, f"{path_hash}.jpg")
+                cv2.imwrite(thumb_path, resized, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
+
+                DB_MANAGER.update_file_info(file_path, mtime, is_360, False, thumb_path)
+                self.thumb_ready.emit(file_path, thumb_path, is_360, False)
+            except Exception as e:
+                pass
+
+        self.finished_dir.emit()
 
 class EquirectangularProjector:
     def __init__(self, image_path):
@@ -593,6 +710,113 @@ class ImageInfoDialog(QDialog):
         close_btn.clicked.connect(self.accept)
         layout.addWidget(close_btn)
 
+class ImageBrowserDialog(QDialog):
+    def __init__(self, parent, start_dir):
+        super().__init__(parent)
+        self.setWindowTitle("Browse 360 Images")
+        self.resize(1000, 700)
+        self.current_dir = start_dir
+        self.selected_file = None
+        self.worker = None
+
+        layout = QVBoxLayout(self)
+
+        nav_layout = QHBoxLayout()
+        self.btn_up = QPushButton("⬆ Up")
+        self.btn_up.clicked.connect(self.go_up)
+        self.path_edit = QLineEdit(self.current_dir)
+        self.path_edit.returnPressed.connect(self.load_directory)
+
+        nav_layout.addWidget(self.btn_up)
+        nav_layout.addWidget(self.path_edit)
+        layout.addLayout(nav_layout)
+
+        self.list_widget = QListWidget()
+        self.list_widget.setViewMode(QListView.ViewMode.IconMode)
+        self.list_widget.setIconSize(QSize(200, 200))
+        self.list_widget.setResizeMode(QListView.ResizeMode.Adjust)
+        self.list_widget.setSpacing(15)
+        self.list_widget.itemDoubleClicked.connect(self.accept_selection)
+        layout.addWidget(self.list_widget)
+
+        btn_layout = QHBoxLayout()
+        self.btn_cancel = QPushButton("Cancel")
+        self.btn_cancel.clicked.connect(self.reject)
+        self.btn_open = QPushButton("Open Selected")
+        self.btn_open.clicked.connect(self.accept_selection)
+        btn_layout.addStretch()
+        btn_layout.addWidget(self.btn_cancel)
+        btn_layout.addWidget(self.btn_open)
+        layout.addLayout(btn_layout)
+
+        self.load_directory()
+
+    def go_up(self):
+        new_dir = os.path.dirname(self.current_dir)
+        if new_dir and new_dir != self.current_dir:
+            self.current_dir = new_dir
+            self.path_edit.setText(self.current_dir)
+            self.load_directory()
+
+    def load_directory(self):
+        self.current_dir = self.path_edit.text()
+        if not os.path.exists(self.current_dir): return
+
+        self.list_widget.clear()
+        if self.worker:
+            self.worker.stop()
+            self.worker.wait()
+
+        self.worker = ThumbnailWorker(self.current_dir)
+        self.worker.thumb_ready.connect(self.add_thumbnail)
+        self.worker.start()
+
+    def add_thumbnail(self, file_path, thumb_path, is_360, is_opened):
+        item = QListWidgetItem()
+        item.setData(Qt.ItemDataRole.UserRole, file_path)
+        item.setText(os.path.basename(file_path))
+
+        pixmap = QPixmap(thumb_path)
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        # Format Badge
+        badge_text = "360°" if is_360 else "2D FLAT"
+        badge_color = QColor(0, 120, 215, 230) if is_360 else QColor(100, 100, 100, 230)
+        painter.setBrush(badge_color)
+        painter.setPen(Qt.GlobalColor.transparent)
+        painter.drawRect(0, 0, 75, 30)
+        painter.setPen(Qt.GlobalColor.white)
+        font = painter.font()
+        font.setBold(True)
+        font.setPixelSize(14)
+        painter.setFont(font)
+        painter.drawText(0, 0, 75, 30, Qt.AlignmentFlag.AlignCenter, badge_text)
+
+        # Opened History Indicator
+        if is_opened:
+            painter.setBrush(QColor(40, 167, 69, 230))
+            painter.setPen(Qt.GlobalColor.transparent)
+            painter.drawEllipse(pixmap.width() - 40, 5, 35, 35)
+            painter.setPen(Qt.GlobalColor.white)
+            painter.drawText(pixmap.width() - 40, 5, 35, 35, Qt.AlignmentFlag.AlignCenter, "✓")
+
+        painter.end()
+        item.setIcon(QIcon(pixmap))
+        self.list_widget.addItem(item)
+
+    def accept_selection(self):
+        selected = self.list_widget.selectedItems()
+        if selected:
+            self.selected_file = selected[0].data(Qt.ItemDataRole.UserRole)
+            self.accept()
+
+    def closeEvent(self, event):
+        if self.worker:
+            self.worker.stop()
+            self.worker.wait()
+        super().closeEvent(event)
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -1081,12 +1305,15 @@ class MainWindow(QMainWindow):
         layout.addLayout(col_layout)
 
     def load_image(self):
-        file_filter = "Image Files (*.jpg *.jpeg *.JPG *.JPEG *.png *.PNG *.hdr *.exr *.tiff *.tif *.webp *.WEBP)"
-        file_name, _ = QFileDialog.getOpenFileName(self, "Open 360 Image", self.last_load_dir, file_filter)
-        if file_name:
-            self.load_image_from_path(file_name)
+        DB_MANAGER.prune_missing_files()
+        start_path = self.last_load_dir if self.last_load_dir else os.path.expanduser("~")
+
+        dlg = ImageBrowserDialog(self, start_path)
+        if dlg.exec() == QDialog.DialogCode.Accepted and dlg.selected_file:
+            self.load_image_from_path(dlg.selected_file)
 
     def load_image_from_path(self, file_name):
+        DB_MANAGER.mark_opened(file_name) # Register in history
         self.last_load_dir = os.path.dirname(file_name)
         self.settings.setValue("last_load_dir", self.last_load_dir)
 
