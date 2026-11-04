@@ -8,7 +8,7 @@ Whether you've purchased a [DJI OSMO 360 II](https://link.amazon/A0bJE05Ol), an 
 
 **Baldnerd's 360 Portrait Studio** is a desktop application designed to bridge the gap between immersive 360-degree photography and traditional 2D formats. It allows photographers to load full spherical photos, perfectly frame a specific subject, apply professional-grade color corrections, and export standard, flat images ready for print or social media.
 
-![Application Screenshot](assets/360-portrait-studio-1.0.jpg)
+![Application Screenshot](assets/360-portrait-studio-1.1.jpg)
 
 **TURN THIS:**
 ![Equirectangular 360-Degree Projection](assets/sample-equirectangular.jpg)
