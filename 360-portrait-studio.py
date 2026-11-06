@@ -155,7 +155,8 @@ def resource_path(relative_path):
     return os.path.join(base_path, relative_path)
 
 class ThumbnailWorker(QThread):
-    thumb_ready = pyqtSignal(str, str, bool, bool) # file_path, thumb_path, is_360, is_opened
+    thumb_ready = pyqtSignal(str, str, bool, bool)
+    folder_ready = pyqtSignal(str)
     finished_dir = pyqtSignal()
 
     def __init__(self, directory):
@@ -163,54 +164,66 @@ class ThumbnailWorker(QThread):
         self.directory = directory
         self.is_running = True
 
-    def stop(self):
-        self.is_running = False
+    def stop(self): self.is_running = False
 
     def run(self):
         valid_exts = ('.jpg', '.jpeg', '.png', '.hdr', '.exr', '.tiff', '.tif', '.webp')
         try:
-            files = [f for f in os.listdir(self.directory) if f.lower().endswith(valid_exts)]
-        except:
+            raw_items = os.listdir(self.directory)
+
+            # Sort alphabetically, folders first
+            folders = sorted([f for f in raw_items if os.path.isdir(os.path.join(self.directory, f))], key=str.lower)
+            files = sorted([f for f in raw_items if not os.path.isdir(os.path.join(self.directory, f))], key=str.lower)
+            items = folders + files
+
+        except Exception:
             self.finished_dir.emit()
             return
 
-        for f in files:
+        for f in items:
             if not self.is_running: break
+            full_path = os.path.join(self.directory, f)
 
-            file_path = os.path.join(self.directory, f)
-            try: mtime = os.path.getmtime(file_path)
-            except: continue
-
-            cached = DB_MANAGER.get_file_info(file_path, mtime)
-            if cached and os.path.exists(cached["thumb_path"]):
-                self.thumb_ready.emit(file_path, cached["thumb_path"], cached["is_360"], cached["is_opened"])
+            if os.path.isdir(full_path):
+                self.folder_ready.emit(full_path)
                 continue
 
-            # Generate new center-cropped thumb
+            if not f.lower().endswith(valid_exts): continue
+
+            try: mtime = os.path.getmtime(full_path)
+            except: continue
+
+            cached = DB_MANAGER.get_file_info(full_path, mtime)
+            if cached and os.path.exists(cached["thumb_path"]):
+                self.thumb_ready.emit(full_path, cached["thumb_path"], cached["is_360"], cached["is_opened"])
+                continue
+
             try:
-                img = cv2.imread(file_path, cv2.IMREAD_UNCHANGED)
+                img = cv2.imread(full_path, cv2.IMREAD_UNCHANGED)
                 if img is None: continue
 
                 h, w = img.shape[:2]
-                is_360 = (w == h * 2) # Strict 2:1 360 Detection
-
+                is_360 = (w == h * 2) 
                 thumb_size = 256
-                if w > h:
-                    start_x = (w - h) // 2
-                    cropped = img[:, start_x:start_x+h]
+
+                if is_360:
+                    # Generate 3-frame spritesheet (Left, Center, Right)
+                    left = cv2.resize(img[:, :h], (thumb_size, thumb_size), interpolation=cv2.INTER_AREA)
+                    center = cv2.resize(img[:, w//2 - h//2 : w//2 + h//2], (thumb_size, thumb_size), interpolation=cv2.INTER_AREA)
+                    right = cv2.resize(img[:, w-h : w], (thumb_size, thumb_size), interpolation=cv2.INTER_AREA)
+                    final_thumb = np.hstack((left, center, right))
                 else:
-                    cropped = img
+                    start_x = (w - h) // 2 if w > h else 0
+                    cropped = img[:, start_x:start_x+h] if w > h else img
+                    final_thumb = cv2.resize(cropped, (thumb_size, thumb_size), interpolation=cv2.INTER_AREA)
 
-                resized = cv2.resize(cropped, (thumb_size, thumb_size), interpolation=cv2.INTER_AREA)
-                path_hash = hashlib.md5(file_path.encode('utf-8')).hexdigest()
+                path_hash = hashlib.md5(full_path.encode('utf-8')).hexdigest()
                 thumb_path = os.path.join(APP_CACHE_DIR, f"{path_hash}.jpg")
-                cv2.imwrite(thumb_path, resized, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
+                cv2.imwrite(thumb_path, final_thumb, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
 
-                DB_MANAGER.update_file_info(file_path, mtime, is_360, False, thumb_path)
-                self.thumb_ready.emit(file_path, thumb_path, is_360, False)
-            except Exception as e:
-                pass
-
+                DB_MANAGER.update_file_info(full_path, mtime, is_360, False, thumb_path)
+                self.thumb_ready.emit(full_path, thumb_path, is_360, False)
+            except Exception: pass
         self.finished_dir.emit()
 
 class EquirectangularProjector:
@@ -487,46 +500,31 @@ class AboutDialog(QDialog):
             base_url = "https://raw.githubusercontent.com/Cat5TV/360-portrait-studio/refs/heads/main/currentversion.json"
             url = f"{base_url}?nocache={int(time.time())}"
 
-            req = urllib.request.Request(url, headers={
-                'User-Agent': 'Mozilla/5.0',
-                'Cache-Control': 'no-cache',
-                'Pragma': 'no-cache'
-            })
-
+            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0', 'Cache-Control': 'no-cache'})
             with urllib.request.urlopen(req, timeout=5) as response:
                 data = json.loads(response.read().decode('utf-8'))
 
             latest_version = data.get("currentVersion", "")
+            if not latest_version: return
 
-            if not latest_version:
-                QMessageBox.warning(self, "Update Check", "Could not parse the version from the update server.")
-                return
+            def parse_v(v): return tuple(map(int, (v.split("."))))
 
-            if latest_version != VERSION:
+            if parse_v(latest_version) > parse_v(VERSION):
                 msg = f"A new version (<b>v{latest_version}</b>) is available!<br>You are currently running v{VERSION}.<br><br>"
-
-                summary = data.get("updateSummary", "")
-                if summary:
-                    msg += f"<b>Summary:</b> {summary}<br><br>"
-
                 changes = data.get("changes", [])
                 if changes:
-                    msg += "<b>Changes:</b><ul>"
-                    for change in changes:
-                        msg += f"<li>{change}</li>"
-                    msg += "</ul><br>"
-
+                    msg += "<b>Changes:</b><ul>" + "".join([f"<li>{c}</li>" for c in changes]) + "</ul><br>"
                 download_url = data.get("downloadUrl", "https://github.com/Cat5TV/360-portrait-studio")
                 msg += f"Please <a href='{download_url}'>download the latest release</a>."
-
                 box = QMessageBox(self)
                 box.setWindowTitle("Update Available")
                 box.setTextFormat(Qt.TextFormat.RichText)
                 box.setText(msg)
                 box.exec()
+            elif parse_v(latest_version) < parse_v(VERSION):
+                QMessageBox.information(self, "Development Build", f"You are running v{VERSION}, which is an unreleased development build. The latest stable release is v{latest_version}.")
             else:
                 QMessageBox.information(self, "Up to Date", f"You are running the latest version (v{VERSION}).")
-
         except Exception as e:
             QMessageBox.warning(self, "Update Check Failed", f"Could not connect to the update server.\n\nError: {e}")
 
@@ -692,7 +690,7 @@ class ImageInfoDialog(QDialog):
             <p>
               <b>Geocoordinates:</b> {lat_val:.6f}, {lon_val:.6f}
               <br />
-              <a href="{map_url}">🌐 View in OpenStreetMap</a>
+              <a href="{map_url}" style="color: #FF9900; font-size: 11px; text-decoration: none;">🌐 [View on OpenStreetMap]</a>
             </p>
             """
 
@@ -714,73 +712,160 @@ class ImageBrowserDialog(QDialog):
     def __init__(self, parent, start_dir):
         super().__init__(parent)
         self.setWindowTitle("Browse 360 Images")
-        self.resize(1000, 700)
-        self.current_dir = start_dir
+        self.resize(1100, 750)
+        self.current_dir = os.path.normpath(start_dir.strip(' "\''))
         self.selected_file = None
         self.worker = None
+        self.item_pixmaps = {}
 
-        layout = QVBoxLayout(self)
+        # Hover Animation State
+        self.hovered_item = None
+        self.hover_frame = 0
+        self.hover_timer = QTimer(self)
+        self.hover_timer.timeout.connect(self.animate_hover)
+
+        main_layout = QHBoxLayout(self)
+
+        # Sidebar Navigation
+        self.sidebar = QListWidget()
+        self.sidebar.setFixedWidth(200)
+        self.sidebar.setStyleSheet("QListWidget { font-size: 14px; }")
+        self.populate_sidebar()
+        self.sidebar.itemClicked.connect(self.sidebar_nav)
+        main_layout.addWidget(self.sidebar)
+
+        # Main Browser Area
+        browser_layout = QVBoxLayout()
 
         nav_layout = QHBoxLayout()
         self.btn_up = QPushButton("⬆ Up")
+        self.btn_up.setAutoDefault(False)
         self.btn_up.clicked.connect(self.go_up)
         self.path_edit = QLineEdit(self.current_dir)
         self.path_edit.returnPressed.connect(self.load_directory)
-
         nav_layout.addWidget(self.btn_up)
         nav_layout.addWidget(self.path_edit)
-        layout.addLayout(nav_layout)
+        browser_layout.addLayout(nav_layout)
 
         self.list_widget = QListWidget()
         self.list_widget.setViewMode(QListView.ViewMode.IconMode)
-        self.list_widget.setIconSize(QSize(200, 200))
+        self.list_widget.setIconSize(QSize(256, 256))
+        self.list_widget.setGridSize(QSize(280, 320)) # <--- Forces a strict uniform grid
+        self.list_widget.setWordWrap(True)            # <--- Wraps text onto a second line
+        self.list_widget.setTextElideMode(Qt.TextElideMode.ElideRight) # <--- Truncates with "..."
         self.list_widget.setResizeMode(QListView.ResizeMode.Adjust)
         self.list_widget.setSpacing(15)
+        self.list_widget.setMouseTracking(True)
+        self.list_widget.setStyleSheet("""
+            QListWidget::item:selected { background-color: #0078D7; color: white; border: 2px solid white; border-radius: 5px; }
+            QListWidget::item:hover { background-color: #333; color: white; border-radius: 5px; }
+        """)
         self.list_widget.itemDoubleClicked.connect(self.accept_selection)
-        layout.addWidget(self.list_widget)
+        self.list_widget.itemEntered.connect(self.on_item_entered)
+        self.list_widget.viewport().leaveEvent = self.on_viewport_leave
+        browser_layout.addWidget(self.list_widget)
 
         btn_layout = QHBoxLayout()
         self.btn_cancel = QPushButton("Cancel")
+        self.btn_cancel.setAutoDefault(False)
         self.btn_cancel.clicked.connect(self.reject)
         self.btn_open = QPushButton("Open Selected")
+        self.btn_open.setAutoDefault(False)
         self.btn_open.clicked.connect(self.accept_selection)
         btn_layout.addStretch()
         btn_layout.addWidget(self.btn_cancel)
         btn_layout.addWidget(self.btn_open)
-        layout.addLayout(btn_layout)
+        browser_layout.addLayout(btn_layout)
 
+        main_layout.addLayout(browser_layout)
+        self.load_directory()
+
+    def populate_sidebar(self):
+        places = [
+            ("Home", QStandardPaths.writableLocation(QStandardPaths.StandardLocation.HomeLocation)),
+            ("Desktop", QStandardPaths.writableLocation(QStandardPaths.StandardLocation.DesktopLocation)),
+            ("Pictures", QStandardPaths.writableLocation(QStandardPaths.StandardLocation.PicturesLocation)),
+            ("Documents", QStandardPaths.writableLocation(QStandardPaths.StandardLocation.DocumentsLocation)),
+            ("Downloads", QStandardPaths.writableLocation(QStandardPaths.StandardLocation.DownloadLocation))
+        ]
+        for name, path in places:
+            if path:
+                item = QListWidgetItem(name)
+                item.setData(Qt.ItemDataRole.UserRole, path)
+                self.sidebar.addItem(item)
+
+        from PyQt6.QtCore import QDir
+        for drive in QDir.drives():
+            item = QListWidgetItem(f"Drive ({drive.absolutePath()})")
+            item.setData(Qt.ItemDataRole.UserRole, drive.absolutePath())
+            self.sidebar.addItem(item)
+
+    def sidebar_nav(self, item):
+        path = item.data(Qt.ItemDataRole.UserRole)
+        self.path_edit.setText(path)
         self.load_directory()
 
     def go_up(self):
         new_dir = os.path.dirname(self.current_dir)
         if new_dir and new_dir != self.current_dir:
-            self.current_dir = new_dir
-            self.path_edit.setText(self.current_dir)
+            self.path_edit.setText(new_dir)
             self.load_directory()
 
     def load_directory(self):
-        self.current_dir = self.path_edit.text()
-        if not os.path.exists(self.current_dir): return
+        clean_path = os.path.normpath(self.path_edit.text().strip(' "\''))
+        if not os.path.exists(clean_path): return
+
+        self.current_dir = clean_path
+        self.path_edit.setText(self.current_dir)
+
+        # Stop animations BEFORE clearing the list to prevent C++ deletion crashes
+        self.hover_timer.stop()
+        self.hovered_item = None
 
         self.list_widget.clear()
+        self.item_pixmaps.clear()
+
         if self.worker:
             self.worker.stop()
             self.worker.wait()
 
         self.worker = ThumbnailWorker(self.current_dir)
+        self.worker.folder_ready.connect(self.add_folder)
         self.worker.thumb_ready.connect(self.add_thumbnail)
         self.worker.start()
+
+    def add_folder(self, folder_path):
+        item = QListWidgetItem()
+        item.setData(Qt.ItemDataRole.UserRole, folder_path)
+        item.setData(Qt.ItemDataRole.UserRole + 1, "folder")
+        item.setText(f"📁 {os.path.basename(folder_path)}")
+
+        pixmap = QPixmap(256, 256)
+        pixmap.fill(QColor(40, 40, 40))
+        item.setIcon(QIcon(pixmap))
+        self.list_widget.addItem(item)
 
     def add_thumbnail(self, file_path, thumb_path, is_360, is_opened):
         item = QListWidgetItem()
         item.setData(Qt.ItemDataRole.UserRole, file_path)
+        item.setData(Qt.ItemDataRole.UserRole + 1, "image")
+        item.setData(Qt.ItemDataRole.UserRole + 2, is_360)
+        item.setData(Qt.ItemDataRole.UserRole + 3, is_opened) # Save opened state for animation redraws
         item.setText(os.path.basename(file_path))
 
-        pixmap = QPixmap(thumb_path)
-        painter = QPainter(pixmap)
+        full_pixmap = QPixmap(thumb_path)
+        self.item_pixmaps[file_path] = full_pixmap
+
+        # Default to Center Frame (1) for 360s, or Frame (0) for flats
+        start_frame = 1 if is_360 else 0
+        self.render_icon(item, full_pixmap, start_frame, is_360, is_opened)
+        self.list_widget.addItem(item)
+
+    def render_icon(self, item, full_pixmap, frame_idx, is_360, is_opened):
+        crop = full_pixmap.copy(frame_idx * 256, 0, 256, 256) if is_360 else full_pixmap.copy()
+        painter = QPainter(crop)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
-        # Format Badge
         badge_text = "360°" if is_360 else "2D FLAT"
         badge_color = QColor(0, 120, 215, 230) if is_360 else QColor(100, 100, 100, 230)
         painter.setBrush(badge_color)
@@ -793,22 +878,69 @@ class ImageBrowserDialog(QDialog):
         painter.setFont(font)
         painter.drawText(0, 0, 75, 30, Qt.AlignmentFlag.AlignCenter, badge_text)
 
-        # Opened History Indicator
         if is_opened:
             painter.setBrush(QColor(40, 167, 69, 230))
             painter.setPen(Qt.GlobalColor.transparent)
-            painter.drawEllipse(pixmap.width() - 40, 5, 35, 35)
+            painter.drawEllipse(crop.width() - 40, 5, 35, 35)
             painter.setPen(Qt.GlobalColor.white)
-            painter.drawText(pixmap.width() - 40, 5, 35, 35, Qt.AlignmentFlag.AlignCenter, "✓")
+            painter.drawText(crop.width() - 40, 5, 35, 35, Qt.AlignmentFlag.AlignCenter, "✓")
 
         painter.end()
-        item.setIcon(QIcon(pixmap))
-        self.list_widget.addItem(item)
+        item.setIcon(QIcon(crop))
 
-    def accept_selection(self):
+    def on_viewport_leave(self, event):
+        self.hover_timer.stop()
+        self.reset_hovered()
+
+    def on_item_entered(self, item):
+        self.reset_hovered() # Reset previous item to center before animating new one
+        try:
+            if item.data(Qt.ItemDataRole.UserRole + 1) == "image" and item.data(Qt.ItemDataRole.UserRole + 2):
+                self.hovered_item = item
+                self.hover_frame = 1 # Start animation from Center frame
+                self.hover_timer.start(500)
+        except RuntimeError:
+            pass
+
+    def reset_hovered(self):
+        if self.hovered_item:
+            try:
+                fp = self.hovered_item.data(Qt.ItemDataRole.UserRole)
+                if fp in self.item_pixmaps:
+                    is_360 = self.hovered_item.data(Qt.ItemDataRole.UserRole + 2)
+                    is_opened = self.hovered_item.data(Qt.ItemDataRole.UserRole + 3)
+                    # Reset back to Center Frame (1)
+                    self.render_icon(self.hovered_item, self.item_pixmaps[fp], 1 if is_360 else 0, is_360, is_opened)
+            except RuntimeError:
+                pass # Item was deleted (e.g., user navigated away), ignore safely
+            self.hovered_item = None
+
+    def animate_hover(self):
+        if not self.hovered_item: return
+        try:
+            self.hover_frame = (self.hover_frame + 1) % 3
+            fp = self.hovered_item.data(Qt.ItemDataRole.UserRole)
+            is_360 = self.hovered_item.data(Qt.ItemDataRole.UserRole + 2)
+            is_opened = self.hovered_item.data(Qt.ItemDataRole.UserRole + 3)
+            self.render_icon(self.hovered_item, self.item_pixmaps[fp], self.hover_frame, is_360, is_opened)
+        except RuntimeError:
+            # Catch deletion mid-animation and stop timer
+            self.hover_timer.stop()
+            self.hovered_item = None
+
+    def accept_selection(self, item=None):
         selected = self.list_widget.selectedItems()
-        if selected:
-            self.selected_file = selected[0].data(Qt.ItemDataRole.UserRole)
+        if not selected and not item: return
+
+        target = item if item else selected[0]
+        path = target.data(Qt.ItemDataRole.UserRole)
+        item_type = target.data(Qt.ItemDataRole.UserRole + 1)
+
+        if item_type == "folder":
+            self.path_edit.setText(path)
+            self.load_directory()
+        else:
+            self.selected_file = path
             self.accept()
 
     def closeEvent(self, event):
@@ -826,9 +958,9 @@ class MainWindow(QMainWindow):
         self.projector = None
 
         if sys.platform == "darwin":
-            self.setWindowIcon(QIcon(resource_path("assets/icon.icns")))
+            self.setWindowIcon(QIcon(resource_path("assets/icons/icon.icns")))
         else:
-            self.setWindowIcon(QIcon(resource_path("assets/icon.ico")))
+            self.setWindowIcon(QIcon(resource_path("assets/icons/icon.ico")))
 
         # Enable drag-and-drop file loading
         self.setAcceptDrops(True)
@@ -1309,15 +1441,19 @@ class MainWindow(QMainWindow):
         start_path = self.last_load_dir if self.last_load_dir else os.path.expanduser("~")
 
         dlg = ImageBrowserDialog(self, start_path)
-        if dlg.exec() == QDialog.DialogCode.Accepted and dlg.selected_file:
+        # PyQt6 returns an int (1 for Accepted). Check for 1 explicitly.
+        if dlg.exec() == 1 and dlg.selected_file:
             self.load_image_from_path(dlg.selected_file)
 
     def load_image_from_path(self, file_name):
+        # Scrub quotes safely and force forward slashes (sometimes fixes Piexif pathing issues on Windows/WSL)
+        file_name = file_name.strip(' "\'').replace('\\', '/')
+
         DB_MANAGER.mark_opened(file_name) # Register in history
+
         self.last_load_dir = os.path.dirname(file_name)
         self.settings.setValue("last_load_dir", self.last_load_dir)
 
-        # Extract the filename and update the window title
         short_name = os.path.basename(file_name)
         self.setWindowTitle(f"Baldnerd's 360 Portrait Studio v{VERSION} - {short_name}")
 
@@ -1335,7 +1471,7 @@ class MainWindow(QMainWindow):
             except Exception:
                 pass
 
-        self.btn_info.setEnabled(True) # Enables info now that projector & EXIF exist
+        self.btn_info.setEnabled(True)
 
         self.history.clear()
         self.history_index = -1
