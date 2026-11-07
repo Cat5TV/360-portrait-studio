@@ -19,6 +19,9 @@ import hashlib
 from PyQt6.QtCore import QStandardPaths, QThread, pyqtSignal, QSize, Qt
 from PyQt6.QtWidgets import (QListWidget, QListWidgetItem, QLineEdit, QListView)
 from PyQt6.QtGui import QBrush
+from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
+                             QHBoxLayout, QPushButton, QLabel, QSlider, QFileDialog, QComboBox,
+                             QSizePolicy, QCheckBox, QMessageBox, QToolButton, QDialog, QScrollArea, QProgressBar)
 
 try:
     import piexif
@@ -65,9 +68,9 @@ class DatabaseManager:
         return None
 
     def update_file_info(self, file_path, last_modified, is_360, is_opened, thumb_path):
-        self.conn.execute('''INSERT OR REPLACE INTO image_cache 
+        self.conn.execute('''INSERT OR REPLACE INTO image_cache
                              (file_path, last_modified, is_360, is_opened, thumb_path)
-                             VALUES (?, ?, ?, ?, ?)''', 
+                             VALUES (?, ?, ?, ?, ?)''',
                           (file_path, last_modified, int(is_360), int(is_opened), thumb_path))
         self.conn.commit()
 
@@ -76,7 +79,6 @@ class DatabaseManager:
         self.conn.commit()
 
     def prune_missing_files(self):
-        # Maintenance task to clear orphaned file references from cache
         cursor = self.conn.execute("SELECT file_path, thumb_path FROM image_cache")
         for row in cursor.fetchall():
             if not os.path.exists(row[0]):
@@ -158,6 +160,7 @@ class ThumbnailWorker(QThread):
     thumb_ready = pyqtSignal(str, str, bool, bool)
     folder_ready = pyqtSignal(str)
     finished_dir = pyqtSignal()
+    progress = pyqtSignal(int, int)
 
     def __init__(self, directory):
         super().__init__()
@@ -170,18 +173,22 @@ class ThumbnailWorker(QThread):
         valid_exts = ('.jpg', '.jpeg', '.png', '.hdr', '.exr', '.tiff', '.tif', '.webp')
         try:
             raw_items = os.listdir(self.directory)
-
-            # Sort alphabetically, folders first
             folders = sorted([f for f in raw_items if os.path.isdir(os.path.join(self.directory, f))], key=str.lower)
             files = sorted([f for f in raw_items if not os.path.isdir(os.path.join(self.directory, f))], key=str.lower)
             items = folders + files
-
         except Exception:
             self.finished_dir.emit()
             return
 
-        for f in items:
+        total_items = len(items)
+
+        # Loop with an index for the progress bar
+        for idx, f in enumerate(items, start=1):
             if not self.is_running: break
+
+            # Emit current progress
+            self.progress.emit(idx, total_items)
+
             full_path = os.path.join(self.directory, f)
 
             if os.path.isdir(full_path):
@@ -203,7 +210,7 @@ class ThumbnailWorker(QThread):
                 if img is None: continue
 
                 h, w = img.shape[:2]
-                is_360 = (w == h * 2) 
+                is_360 = (w == h * 2)
                 thumb_size = 256
 
                 if is_360:
@@ -224,6 +231,7 @@ class ThumbnailWorker(QThread):
                 DB_MANAGER.update_file_info(full_path, mtime, is_360, False, thumb_path)
                 self.thumb_ready.emit(full_path, thumb_path, is_360, False)
             except Exception: pass
+
         self.finished_dir.emit()
 
 class EquirectangularProjector:
@@ -765,6 +773,12 @@ class ImageBrowserDialog(QDialog):
         self.list_widget.viewport().leaveEvent = self.on_viewport_leave
         browser_layout.addWidget(self.list_widget)
 
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setVisible(False)
+        self.progress_bar.setFixedHeight(10)
+        self.progress_bar.setTextVisible(False)
+        browser_layout.addWidget(self.progress_bar)
+
         btn_layout = QHBoxLayout()
         self.btn_cancel = QPushButton("Cancel")
         self.btn_cancel.setAutoDefault(False)
@@ -796,8 +810,13 @@ class ImageBrowserDialog(QDialog):
 
         from PyQt6.QtCore import QDir
         for drive in QDir.drives():
-            item = QListWidgetItem(f"Drive ({drive.absolutePath()})")
-            item.setData(Qt.ItemDataRole.UserRole, drive.absolutePath())
+            drive_path = drive.absolutePath()
+            # Convert Qt's universal forward slash into the OS's native slash for the display label
+            native_path = os.path.normpath(drive_path)
+            item = QListWidgetItem(f"Drive ({native_path})")
+
+            # Store the native path for the actual navigation action
+            item.setData(Qt.ItemDataRole.UserRole, native_path)
             self.sidebar.addItem(item)
 
     def sidebar_nav(self, item):
@@ -829,9 +848,14 @@ class ImageBrowserDialog(QDialog):
             self.worker.stop()
             self.worker.wait()
 
+        self.progress_bar.setVisible(True)
+        self.progress_bar.setValue(0)
+
         self.worker = ThumbnailWorker(self.current_dir)
         self.worker.folder_ready.connect(self.add_folder)
         self.worker.thumb_ready.connect(self.add_thumbnail)
+        self.worker.progress.connect(self.update_progress)
+        self.worker.finished_dir.connect(self.hide_progress)
         self.worker.start()
 
     def add_folder(self, folder_path):
@@ -948,6 +972,13 @@ class ImageBrowserDialog(QDialog):
             self.worker.stop()
             self.worker.wait()
         super().closeEvent(event)
+
+    def update_progress(self, current, total):
+        self.progress_bar.setMaximum(total)
+        self.progress_bar.setValue(current)
+
+    def hide_progress(self):
+        self.progress_bar.setVisible(False)
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -1446,10 +1477,10 @@ class MainWindow(QMainWindow):
             self.load_image_from_path(dlg.selected_file)
 
     def load_image_from_path(self, file_name):
-        # Scrub quotes safely and force forward slashes (sometimes fixes Piexif pathing issues on Windows/WSL)
-        file_name = file_name.strip(' "\'').replace('\\', '/')
+        # Leave the OS-native path exactly as-is for the database and projector
+        file_name = file_name.strip(' "\'')
 
-        DB_MANAGER.mark_opened(file_name) # Register in history
+        DB_MANAGER.mark_opened(file_name) # Registers correctly in DB
 
         self.last_load_dir = os.path.dirname(file_name)
         self.settings.setValue("last_load_dir", self.last_load_dir)
@@ -1467,7 +1498,9 @@ class MainWindow(QMainWindow):
         self.current_exif = None
         if HAS_PIEXIF:
             try:
-                self.current_exif = piexif.load(file_name)
+                # ONLY manipulate the path for piexif's fragile parser
+                exif_path = file_name.replace('\\', '/')
+                self.current_exif = piexif.load(exif_path)
             except Exception:
                 pass
 

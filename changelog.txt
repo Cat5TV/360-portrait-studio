@@ -11,11 +11,12 @@
     - Improved the quality of the brand and camera model detection and included links to buy.
     - Minor improvements to the About dialog.
 
-1.2 - Work in Progress (unstable)
-    - Created a custom digital asset manager (DAM) to replace the old OS dialogue when Load Image is clicked. The DAM allows visual browsing of 360 images with previews.
+1.2 - November 7, 2026
+    - Created a custom digital asset manager (DAM) to replace the old OS dialogue when Load Image is clicked.
+    - The DAM creates sprite-based thumbnails for each image, providing visual browsing of 360 images with previews. Loading progress indicator shows current progress of thumbnail generation.
     - DAM adds a checkmark to photos that have already been opened previously to ease navigating large folders of files.
     - Previously I was doing a string comparison for the version check. Changed to a numerical evaluation so the update window can recognize when a user is on a version newer than the current release version, prompting a note about it being a development version.
-    - Moved icons into a nested folder so not all assets are compiled in (reduce filesize of binary).
+    - Moved icons into a nested folder so not all assets are compiled in (reduce filesize of binary by excluding unneeded assets).
     - Added geocoordinates to all 360 photo samples.
     - Improved OpenStreetMap link when geocoordinates are detected.
     - Updated all sample exports to v1.2.
