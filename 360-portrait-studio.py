@@ -79,6 +79,7 @@ class DatabaseManager:
         self.conn.commit()
 
     def prune_missing_files(self):
+        # Maintenance task to clear orphaned file references from cache
         cursor = self.conn.execute("SELECT file_path, thumb_path FROM image_cache")
         for row in cursor.fetchall():
             if not os.path.exists(row[0]):
@@ -173,9 +174,12 @@ class ThumbnailWorker(QThread):
         valid_exts = ('.jpg', '.jpeg', '.png', '.hdr', '.exr', '.tiff', '.tif', '.webp')
         try:
             raw_items = os.listdir(self.directory)
+
+            # Sort alphabetically, folders first
             folders = sorted([f for f in raw_items if os.path.isdir(os.path.join(self.directory, f))], key=str.lower)
             files = sorted([f for f in raw_items if not os.path.isdir(os.path.join(self.directory, f))], key=str.lower)
             items = folders + files
+
         except Exception:
             self.finished_dir.emit()
             return
@@ -434,12 +438,12 @@ class InteractiveImageLabel(QLabel):
 class CollapsibleBox(QWidget):
     def __init__(self, title="", parent=None, expanded=False):
         super().__init__(parent)
+        self.title_text = title
+
         self.toggle_button = QToolButton(text=title, checkable=True, checked=expanded)
-        self.toggle_button.setStyleSheet("QToolButton { border: none; font-weight: bold; text-align: left; background-color: #e0e0e0; padding: 5px; }")
-        self.toggle_button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
-        self.toggle_button.setArrowType(Qt.ArrowType.DownArrow if expanded else Qt.ArrowType.RightArrow)
         self.toggle_button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.toggle_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.update_button_style(expanded)
 
         self.content_area = QWidget()
         self.content_layout = QVBoxLayout(self.content_area)
@@ -452,11 +456,25 @@ class CollapsibleBox(QWidget):
         layout.addWidget(self.toggle_button)
         layout.addWidget(self.content_area)
 
+    def update_button_style(self, is_expanded):
+        if is_expanded:
+            self.toggle_button.setStyleSheet("""
+                QToolButton { border: none; font-weight: bold; text-align: center; 
+                              background-color: #0078D7; color: white; padding: 8px; border-radius: 4px; }
+            """)
+        else:
+            self.toggle_button.setStyleSheet("""
+                QToolButton { border: none; font-weight: bold; text-align: center; 
+                              background-color: #e0e0e0; color: black; padding: 8px; border-radius: 4px; }
+                QToolButton:hover { background-color: #d0d0d0; }
+            """)
+
     def set_expanded(self, expanded):
         self.toggle_button.blockSignals(True)
         self.toggle_button.setChecked(expanded)
-        self.toggle_button.setArrowType(Qt.ArrowType.DownArrow if expanded else Qt.ArrowType.RightArrow)
+        self.update_button_style(expanded)
         self.content_area.setVisible(expanded)
+        self.toggle_button.blockSignals(False)
         self.toggle_button.blockSignals(False)
 
 class AboutDialog(QDialog):
@@ -1262,7 +1280,10 @@ class MainWindow(QMainWindow):
             for b in self.boxes:
                 if b != clicked_box:
                     b.set_expanded(False)
+
+            # Show content and apply active styling to the clicked box
             clicked_box.content_area.setVisible(True)
+            clicked_box.update_button_style(True)
         else:
             clicked_box.set_expanded(False)
 
@@ -1613,7 +1634,10 @@ class MainWindow(QMainWindow):
         if clarity_val > 0:
             lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
             l, a, b = cv2.split(lab)
-            clip_limit = (clarity_val / 100.0) * 3.0 + 1.0
+
+            curve_val = ((clarity_val ** 2) / 10000.0) * 0.40
+            clip_limit = curve_val * 3.0 + 1.0
+
             clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=(8,8))
             l = clahe.apply(l)
             lab = cv2.merge((l, a, b))
