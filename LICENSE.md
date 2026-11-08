@@ -1,6 +1,6 @@
-**BALDNERD SOURCE-AVAILABLE END USER LICENSE AGREEMENT**
+**BALDNERD SOURCE-AVAILABLE END USER LICENSE AGREEMENT 1.0**
 
-Copyright (c) 2026 Robbie Ferguson // The Bald Nerd
+Copyright (c) 2026 Robbie Ferguson, Category5 TV Network (The Bald Nerd)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of the source code and associated documentation files (the "Software"), to deal in the Software subject to the following conditions and restrictions:
 

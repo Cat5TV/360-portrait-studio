@@ -1,4 +1,2 @@
-- Create a custom open dialogue that features preview image of each photo in the folder being browsed. This will need to use some form of cache for files stored on NAS / over VPN else they will take forever to load.
-- Since the photos we are hoping to browse are equirectangular, the preview should be "fixed" to a 2D image, or somehow displayed in a way that makes it easier for the user to tell what the image is without as much distortion. Perhaps even rotate the camera when mouse over the thumbnail?
-- In open dialogue, have an indicator to show any photos that have already been opened vs. those that have never been opened (make it easier to go through many files).
-- Attempt to detect if each photo is equirectangular 360 or not. If yes, add a little icon to the thumbnail that designates it as a 360 image. For photos that appear to be standard flat images (like from a phone camera), instead have an icon of a square image.
+- Add ability to load samples in the Image Loader directly from the web (no need to pre-download).
+- Add filters to DAM: Hide previously viewed. Hide folders. Hide 2D Flat images.

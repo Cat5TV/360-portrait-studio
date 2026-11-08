@@ -1,8 +1,8 @@
 # Baldnerd's 360 Portrait Studio
 
-by Robbie Ferguson // The Bald Nerd
+by Robbie Ferguson // The Bald Nerd // Category5 TV Network
 
-Create beautiful 2D images from 360-degree equirectangular sources.
+A professional imaging tool to create beautiful 2D images from 360-degree equirectangular sources.
 
 * For Windows: [Buy Now](https://www.patreon.com/Category5/posts/download-360-173554469) (Free Perk for Cat5TV Patrons)
 * For Linux: [Buy Now](https://www.patreon.com/Category5/posts/download-360-173554469) (Free Perk for Cat5TV Patrons)
@@ -12,7 +12,7 @@ Whether you've purchased a [DJI OSMO 360 II](https://link.amazon/A0bJE05Ol), an 
 
 **Baldnerd's 360 Portrait Studio** is a desktop application designed to bridge the gap between immersive 360-degree photography and traditional 2D formats. It allows photographers to load full equirectangular 360 photos, perfectly frame a specific subject, apply professional-grade color corrections, and export standard, flat images ready for print or social media.
 
-![Application Screenshot](assets/360-portrait-studio-1.1.jpg)
+![Application Screenshot](assets/360-portrait-studio-1.2.jpg)
 
 **TURN THIS:**
 ![Equirectangular 360-Degree Projection](assets/sample-equirectangular.jpg)
@@ -32,6 +32,7 @@ Whether you've purchased a [DJI OSMO 360 II](https://link.amazon/A0bJE05Ol), an 
 * **White Balance:** Using the Eyedropper tool, click any white or neutral gray area in the image to instantly calculate and apply accurate white balance.
 * **Improve Color:** Dial in Brightness, Contrast, Shadows, Highlights, and Saturation.
 * **Clarity:** An auto-leveling tool that dynamically balances exposure across mixed-lighting scenes.
+* **RGB Scope:** A waveform-style RGB histogram automatically appears when the Color Grading panel is open, providing real-time visual feedback so you never accidentally crush your shadows or clip your highlights.
 
 **Special Effects & Retouching**
 * **Noise Reduction & Beautify:** Smooth out high-ISO grain and apply skin softening while preserving hard edges.
@@ -46,15 +47,27 @@ Whether you've purchased a [DJI OSMO 360 II](https://link.amazon/A0bJE05Ol), an 
 * **Drag-and-Drop Support:** Quickly load new 360 images by dragging and dropping them directly onto the application window.
 * **Advanced Image Info:** Click "Image Info" to view hidden image data such as capture details, camera settings, and planned export dimensions. If your photo contains GPS data, a privacy-focused OpenStreetMap link to the exact location is provided.
 * **Source Overwrite Protection:** Built-in safety checks block accidental overwriting of original 360 source files or images not created by the software.
+* **Digital Asset Manager (DAM):** The "Load Image" feature presents a file browser specially designed for browsing 360 images. The DAM generates 3-frame sprite thumbnails that animate on mouseover, and caches them for faster loading.
+* **Smart History & Caching:** Backed by a persistent SQLite database, the app remembers which folders you've visited for instant loading and places a helpful checkmark on photos you've already opened to ease navigating large folders. Fully supports EXIF metadata reading.
 
 **Included Samples**
 * Experiment, practice or simply test the tool with provided sample 360 photos in the `samples` folder.
 * All sample images are licensed under the terms of the Creative Commons Zero (CC0) dedication, and may be used by anyone for any purpose, commercial or otherwise, without restriction.
 * All sample photos are taken by Robbie Ferguson on a DJI OSMO 360 II camera unless otherwise noted.
 
+## Cache and Database Location
+
+This folder stores the compressed thumbnail sprites and the history database which tells the Load Image window which files have already been opened (and adds a checkmark to the ones that have).
+
+* Windows: %LOCALAPPDATA%\Baldnerds360PortraitStudio
+* Linux: ~/.local/share/Baldnerds360PortraitStudio
+* macOS: ~/Library/Application Support/Baldnerds360PortraitStudio
+
+With Baldnerd's 360 Portrait Studio closed, you can safely delete the cache folder if desired.
+
 ## Run Baldnerd's 360 Portrait Studio
 
-### Just Download and Run It Like a Pro (Binaries)
+### Download and Run It Like a Pro (Binaries)
 
 * For Windows: [Buy Now](https://www.patreon.com/Category5/posts/download-360-173554469) (Free Perk for Cat5TV Patrons)
 * For Linux: [Buy Now](https://www.patreon.com/Category5/posts/download-360-173554469) (Free Perk for Cat5TV Patrons)

@@ -22,6 +22,8 @@ from PyQt6.QtGui import QBrush
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QHBoxLayout, QPushButton, QLabel, QSlider, QFileDialog, QComboBox,
                              QSizePolicy, QCheckBox, QMessageBox, QToolButton, QDialog, QScrollArea, QProgressBar)
+from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QUrl, QVariantAnimation, QSettings, QPointF
+from PyQt6.QtGui import QImage, QPixmap, QShortcut, QKeySequence, QDesktopServices, QPainter, QColor, QPen, QIcon, QPolygonF, QBrush
 
 try:
     import piexif
@@ -304,6 +306,8 @@ class InteractiveImageLabel(QLabel):
         self.show_grid = False
         self.overlay_text = ""
         self.eyedropper_mode = False
+        self.show_scopes = False
+        self.scope_pixmap = None
 
         self.fade_anim = QVariantAnimation(self)
         self.fade_anim.setDuration(250)
@@ -311,8 +315,67 @@ class InteractiveImageLabel(QLabel):
         self.fade_anim.finished.connect(self._fade_finished)
         self.fade_alpha = 1.0
 
+    def set_scopes_visible(self, visible):
+        self.show_scopes = visible
+        self._update_scope()
+        self.update()
+
+    def _update_scope(self):
+        if not self.show_scopes or self.raw_preview_img is None:
+            self.scope_pixmap = None
+            return
+
+        img = self.raw_preview_img
+        scope_w, scope_h = 256, 150
+
+        # Calculate fast RGB Histograms
+        hists = []
+        for i in [0, 1, 2]: # B, G, R
+            hist = cv2.calcHist([img], [i], None, [256], [0, 256])
+            cv2.normalize(hist, hist, 0, scope_h - 20, cv2.NORM_MINMAX)
+            hists.append(hist)
+
+        pm = QPixmap(scope_w, scope_h)
+        pm.fill(QColor(15, 15, 15, 230))
+
+        painter = QPainter(pm)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        # Draw Graticules
+        painter.setPen(QPen(QColor(100, 100, 100, 100), 1, Qt.PenStyle.DashLine))
+        for i in range(5):
+            y = int((i / 4.0) * (scope_h - 20)) + 10
+            painter.drawLine(0, y, scope_w, y)
+
+        colors = [QColor(50, 150, 255, 180), QColor(50, 255, 50, 180), QColor(255, 50, 50, 180)]
+        for i in range(3):
+            poly = QPolygonF()
+            poly.append(QPointF(0, scope_h))
+            for x in range(256):
+                # Fix: Safely extract scalar using .item(x)
+                y = (scope_h - 10) - float(hists[i].item(x))
+                poly.append(QPointF(x, y))
+            poly.append(QPointF(255, scope_h))
+
+            painter.setPen(QPen(colors[i], 1.5))
+            painter.setBrush(QBrush(QColor(colors[i].red(), colors[i].green(), colors[i].blue(), 40)))
+            painter.drawPolygon(poly)
+
+        # Draw Scope Labels
+        painter.setPen(QColor(150, 150, 150))
+        font = painter.font()
+        font.setPixelSize(10)
+        painter.setFont(font)
+        painter.drawText(5, 10, "255")
+        painter.drawText(5, scope_h - 2, "0")
+
+        painter.end()
+        self.scope_pixmap = pm
+
     def set_master_pixmap(self, pixmap, raw_img, fade=False):
         self.raw_preview_img = raw_img
+        self._update_scope()
+
         if fade and self.current_pixmap:
             self.old_pixmap = self.current_pixmap
             self.current_pixmap = pixmap
@@ -338,6 +401,8 @@ class InteractiveImageLabel(QLabel):
     def store_bypass_cache(self):
         self.bypass_pixmap_cache = self.current_pixmap
         self.bypass_text_cache = self.overlay_text
+        self.bypass_raw_cache = self.raw_preview_img
+        self.bypass_scope_cache = self.scope_pixmap
 
     def restore_bypass_cache(self):
         if hasattr(self, 'bypass_pixmap_cache') and self.bypass_pixmap_cache:
@@ -345,6 +410,8 @@ class InteractiveImageLabel(QLabel):
             self.old_pixmap = None
             self.current_pixmap = self.bypass_pixmap_cache
             self.overlay_text = getattr(self, 'bypass_text_cache', "")
+            self.raw_preview_img = getattr(self, 'bypass_raw_cache', self.raw_preview_img)
+            self.scope_pixmap = getattr(self, 'bypass_scope_cache', self.scope_pixmap)
             self.fade_alpha = 1.0
             self.update()
 
@@ -409,6 +476,13 @@ class InteractiveImageLabel(QLabel):
             painter.setFont(font)
             painter.drawText(x + 20, y + 40, self.overlay_text)
 
+        # Draw the scopes overlay when active
+        if self.show_scopes and self.scope_pixmap and w > 0:
+            sx = self.width() - self.scope_pixmap.width() - 20
+            sy = self.height() - self.scope_pixmap.height() - 20
+            painter.setOpacity(1.0)
+            painter.drawPixmap(sx, sy, self.scope_pixmap)
+
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
             if self.eyedropper_mode and self.raw_preview_img is not None:
@@ -438,8 +512,6 @@ class InteractiveImageLabel(QLabel):
 class CollapsibleBox(QWidget):
     def __init__(self, title="", parent=None, expanded=False):
         super().__init__(parent)
-        self.title_text = title
-
         self.toggle_button = QToolButton(text=title, checkable=True, checked=expanded)
         self.toggle_button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.toggle_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
@@ -459,12 +531,12 @@ class CollapsibleBox(QWidget):
     def update_button_style(self, is_expanded):
         if is_expanded:
             self.toggle_button.setStyleSheet("""
-                QToolButton { border: none; font-weight: bold; text-align: center; 
+                QToolButton { border: none; font-weight: bold; text-align: center;
                               background-color: #0078D7; color: white; padding: 8px; border-radius: 4px; }
             """)
         else:
             self.toggle_button.setStyleSheet("""
-                QToolButton { border: none; font-weight: bold; text-align: center; 
+                QToolButton { border: none; font-weight: bold; text-align: center;
                               background-color: #e0e0e0; color: black; padding: 8px; border-radius: 4px; }
                 QToolButton:hover { background-color: #d0d0d0; }
             """)
@@ -474,7 +546,6 @@ class CollapsibleBox(QWidget):
         self.toggle_button.setChecked(expanded)
         self.update_button_style(expanded)
         self.content_area.setVisible(expanded)
-        self.toggle_button.blockSignals(False)
         self.toggle_button.blockSignals(False)
 
 class AboutDialog(QDialog):
@@ -1150,7 +1221,7 @@ class MainWindow(QMainWindow):
         self.boxes = []
 
         # --- Collapsible: Positioning ---
-        self.pos_box = CollapsibleBox("Positioning (Pan/Tilt/Zoom)", expanded=False)
+        self.pos_box = CollapsibleBox("Camera Position", expanded=False)
         self.sliders['yaw'] = self.create_slider_row(self.pos_box.content_layout, "Pan (Yaw):", -180, 180, 0)
         self.sliders['pitch'] = self.create_slider_row(self.pos_box.content_layout, "Tilt (Pitch):", -90, 90, 0)
         self.sliders['roll'] = self.create_slider_row(self.pos_box.content_layout, "Horizon (Roll):", -180, 180, 0)
@@ -1158,8 +1229,9 @@ class MainWindow(QMainWindow):
         self.boxes.append(self.pos_box)
 
         # --- Collapsible: Color ---
-        self.color_box = CollapsibleBox("Color Adjustments", expanded=False)
+        self.color_box = CollapsibleBox("Color Grading", expanded=False)
         self.create_wb_row(self.color_box.content_layout)
+        self.sliders['tint'] = self.create_slider_row(self.color_box.content_layout, "Tint:", -50, 50, 0)
         self.sliders['bright'] = self.create_slider_row(self.color_box.content_layout, "Brightness:", -100, 100, 0)
         self.sliders['contrast'] = self.create_slider_row(self.color_box.content_layout, "Contrast:", -50, 50, 0)
         self.sliders['shadows'] = self.create_slider_row(self.color_box.content_layout, "Boost Shadows:", 0, 100, 0)
@@ -1169,7 +1241,7 @@ class MainWindow(QMainWindow):
         self.boxes.append(self.color_box)
 
         # --- Collapsible: Effects ---
-        self.fx_box = CollapsibleBox("Effects", expanded=False)
+        self.fx_box = CollapsibleBox("Enhancements and Effects", expanded=False)
         self.sliders['noise'] = self.create_slider_row(self.fx_box.content_layout, "Noise Reduction:", 0, 100, 0)
         self.sliders['beautify'] = self.create_slider_row(self.fx_box.content_layout, "Beautify:", 0, 100, 0)
         self.sliders['sharpen'] = self.create_slider_row(self.fx_box.content_layout, "Sharpen:", 0, 100, 0)
@@ -1281,11 +1353,16 @@ class MainWindow(QMainWindow):
                 if b != clicked_box:
                     b.set_expanded(False)
 
-            # Show content and apply active styling to the clicked box
+            # Show content and apply active styling
             clicked_box.content_area.setVisible(True)
             clicked_box.update_button_style(True)
+
+            # Toggle scopes if Color Adjustments is the active box
+            self.image_label.set_scopes_visible(clicked_box == self.color_box)
         else:
             clicked_box.set_expanded(False)
+            if clicked_box == self.color_box:
+                self.image_label.set_scopes_visible(False)
 
     def _get_current_state(self):
         return {
@@ -1314,11 +1391,6 @@ class MainWindow(QMainWindow):
     def _restore_state(self, state):
         self.is_resetting = True
 
-        self.aspect_combo.blockSignals(True)
-        self.orient_combo.blockSignals(True)
-        for s in self.sliders.values():
-            s.blockSignals(True)
-
         self.aspect_combo.setCurrentIndex(state.get('aspect', 0))
         self.orient_combo.setCurrentIndex(state.get('orient', 0))
 
@@ -1329,11 +1401,6 @@ class MainWindow(QMainWindow):
         for k, v in slider_states.items():
             if k in self.sliders:
                 self.sliders[k].setValue(v)
-
-        self.aspect_combo.blockSignals(False)
-        self.orient_combo.blockSignals(False)
-        for s in self.sliders.values():
-            s.blockSignals(False)
 
         self.is_resetting = False
         self.update_view()
@@ -1366,6 +1433,7 @@ class MainWindow(QMainWindow):
         self.sliders['zoom'].setValue(30)
 
         self.sliders['temp'].setValue(0)
+        self.sliders['tint'].setValue(0)
         self.sliders['bright'].setValue(0)
         self.sliders['contrast'].setValue(0)
         self.sliders['shadows'].setValue(0)
@@ -1605,6 +1673,7 @@ class MainWindow(QMainWindow):
         if self.is_bypassed: return img
 
         temp = self.sliders['temp'].value()
+        tint = self.sliders['tint'].value()
         bright = self.sliders['bright'].value()
         cont = self.sliders['contrast'].value()
         shadows_val = self.sliders['shadows'].value()
@@ -1616,14 +1685,22 @@ class MainWindow(QMainWindow):
         dof = self.sliders['dof'].value()
         vig = self.sliders['vig'].value()
 
-        if img.dtype != np.uint8: 
+        if img.dtype != np.uint8:
             img = cv2.normalize(img, None, 0, 255, cv2.NORM_MINMAX, dtype=cv2.CV_8U)
 
-        if temp != 0:
+        if temp != 0 or tint != 0:
             img_float = img.astype(np.float32)
             b, g, r = cv2.split(img_float)
-            r = np.clip(r * (1.0 + (temp / 150.0)), 0, 255)
-            b = np.clip(b * (1.0 - (temp / 150.0)), 0, 255)
+
+            if temp != 0:
+                r = np.clip(r * (1.0 + (temp / 150.0)), 0, 255)
+                b = np.clip(b * (1.0 - (temp / 150.0)), 0, 255)
+
+            if tint != 0:
+                # Positive tint pushes Magenta (reduces green channel)
+                # Negative tint pushes Green (increases green channel)
+                g = np.clip(g * (1.0 - (tint / 150.0)), 0, 255)
+
             img = cv2.merge([b, g, r]).astype(np.uint8)
 
         if bright != 0 or cont != 0:
@@ -1635,12 +1712,15 @@ class MainWindow(QMainWindow):
             lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
             l, a, b = cv2.split(lab)
 
-            curve_val = ((clarity_val ** 2) / 10000.0) * 0.40
-            clip_limit = curve_val * 3.0 + 1.0
+            # Process a solid CLAHE pass
+            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
+            cl = clahe.apply(l)
 
-            clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=(8,8))
-            l = clahe.apply(l)
-            lab = cv2.merge((l, a, b))
+            # Opacity blend the effect in on an exponential curve for ultra-smooth low-end control
+            blend = (clarity_val / 100.0) ** 2
+            l_blended = cv2.addWeighted(cl, blend, l, 1.0 - blend, 0)
+
+            lab = cv2.merge((l_blended, a, b))
             img = cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
 
         if sat != 0 or shadows_val > 0 or highlights_val > 0:
@@ -1669,7 +1749,8 @@ class MainWindow(QMainWindow):
             y, x = np.ogrid[:h, :w]
             mask = np.power(np.clip(np.sqrt((x - w/2)**2 + (y - h/2)**2) / np.hypot(w/2, h/2), 0, 1), 1.5)
             mask = np.dstack([mask]*3)
-            img = (img * (1 - mask) + blurred * mask).astype(np.uint8)
+            # Use float32 math to prevent integer overflow clipping with Vignette/Contrast
+            img = (img.astype(np.float32) * (1.0 - mask) + blurred.astype(np.float32) * mask).astype(np.uint8)
 
         if sharpen_val > 0:
             blur = cv2.GaussianBlur(img, (0, 0), 3)
@@ -1899,5 +1980,5 @@ class MainWindow(QMainWindow):
 if __name__ == '__main__':
     app = QApplication(sys.argv)
     window = MainWindow()
-    window.show()
+    window.showMaximized()
     sys.exit(app.exec())

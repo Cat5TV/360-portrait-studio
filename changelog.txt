@@ -14,11 +14,16 @@
 1.2 - Work in Progress (Unstable)
     - Created a custom digital asset manager (DAM) to replace the old OS dialogue when Load Image is clicked.
     - The DAM creates sprite-based thumbnails for each image, providing visual browsing of 360 images with previews. Loading progress indicator shows current progress of thumbnail generation.
-    - DAM adds a checkmark to photos that have already been opened previously to ease navigating large folders of files.
-    - Previously I was doing a string comparison for the version check. Changed to a numerical evaluation so the update window can recognize when a user is on a version newer than the current release version, prompting a note about it being a development version.
+    - DAM utilizes a local SQLite cache to remember which files have been opened previously and marks them with a checkmark, easing navigation within large folders of files. Previously visited folders load their thumbnails and history states instantly without needing to regenerate.
+    - Network Drive (UNC) file path and metadata support, allows pasting a UNC path into the DAM or browsing directly to a mapped drive letter/mount point to load remote locations, and local cache will generate normally and speed up future browsing.
+    - In earlier versions I was doing a string comparison for the version check. Changed to a numerical evaluation so the update window can recognize when a user is on a version newer than the current release version, prompting a note about it being a development version.
     - Moved icons into a nested folder so not all assets are compiled in (reduce filesize of binary by excluding unneeded assets).
     - Added geocoordinates to all 360 photo samples.
     - Improved OpenStreetMap link when geocoordinates are detected.
     - Updated all sample exports to v1.2 (pre-Clarity update).
     - Improved accordion headers to make it apparent which is open.
     - Reworked the Clarity filter using a parabolic curve, with 1-20 on the slider applying microscopic fractional changes for fine tuning, and gently ramping up to a strict cap equal to the previous 40% threshold to prevent deep-frying the image.
+    - Added Tint adjustment slider.
+    - Renamed Accordions to suit the professional direction of this application (e.g., "Color Grading" rather than "Color Adjustments").
+    - Added a simple but useful RGB histogram that appears when the Color Grading accordion is open.
+    - Application now opens maximized.
