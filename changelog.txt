@@ -11,7 +11,7 @@
     - Improved the quality of the brand and camera model detection and included links to buy.
     - Minor improvements to the About dialog.
 
-1.2 - Work in Progress (Unstable)
+1.2 - November 10, 2026
     - Created a custom digital asset manager (DAM) to replace the old OS dialogue when Load Image is clicked.
     - The DAM creates sprite-based thumbnails for each image, providing visual browsing of 360 images with previews. Loading progress indicator shows current progress of thumbnail generation.
     - DAM utilizes a local SQLite cache to remember which files have been opened previously and marks them with a checkmark, easing navigation within large folders of files. Previously visited folders load their thumbnails and history states instantly without needing to regenerate.
