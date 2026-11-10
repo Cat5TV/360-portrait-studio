@@ -4,13 +4,33 @@ by Robbie Ferguson // The Bald Nerd // Category5 TV Network
 
 A professional imaging tool to create beautiful 2D images from 360-degree equirectangular sources.
 
-* For Windows: [Buy Now](https://www.patreon.com/Category5/posts/download-360-173554469) (Free Perk for Cat5TV Patrons)
-* For Linux: [Buy Now](https://www.patreon.com/Category5/posts/download-360-173554469) (Free Perk for Cat5TV Patrons)
-* For Mac: [Buy Now](https://www.patreon.com/Category5/posts/download-360-173554469) (Free Perk for Cat5TV Patrons)
-
 Whether you've purchased a [DJI OSMO 360 II](https://link.amazon/A0bJE05Ol), an [Insta 360 X6](https://link.amazon/B00bpMqKL) or even the airborne [DJI Avata 360](https://link.amazon/B00bpMqKL) drone, you'll end up with some incredible 360 photos that are difficult to edit or view on traditional displays, and even more difficult to print.
 
 **Baldnerd's 360 Portrait Studio** is a desktop application designed to bridge the gap between immersive 360-degree photography and traditional 2D formats. It allows photographers to load full equirectangular 360 photos, perfectly frame a specific subject, apply professional-grade color corrections, and export standard, flat images ready for print or social media.
+
+
+## 📦 Official Binaries
+
+Official pre-built binaries are available exclusively on Patreon:
+
+[![Download on Patreon](https://img.shields.io/badge/Patreon-Download_Official_Binaries-FF424D?style=for-the-badge&logo=patreon&logoColor=white)](https://www.patreon.com/Category5/posts/download-360-173554469)
+
+> [!IMPORTANT]
+> To ensure you are running safe, unmodified software, and to support my ongoing development efforts as a weekend programmer, please ensure you download and run only official binaries.
+
+---
+
+### Integrity Verification (MD5 Checksums)
+
+#### Release `v1.2`
+
+| OS / Platform | Artifact | MD5 Hash |
+| :--- | :--- | :--- |
+| **Linux** | `360-portrait-studio-1.2-Linux` | `d9848454a5059c6939815cabd664e0a3` |
+| **Windows** | `360-portrait-studio-1.2-Windows.exe` | `3930bdb04fe08778462bd32a2907315f` |
+| **macOS** | `360-portrait-studio-1.2-macOS.zip` | `207e0af381f24381dc890b693c74ec07` |
+
+## 🖼️ Screenshots
 
 ![Application Screenshot](assets/360-portrait-studio-1.2.jpg)
 
@@ -21,7 +41,7 @@ Whether you've purchased a [DJI OSMO 360 II](https://link.amazon/A0bJE05Ol), an 
 ![4x6 Horizontal Export from Baldnerd's 360 Portrait Studio](samples/Exports/Fall%20Canopy%20Country%20Road.jpg)
 
 
-## Key Features
+## ✨ Key Features
 
 **Virtual Camera Framing**
 * **Intuitive Controls:** Drag directly on the image to look around, zoom with scroll wheel, use the arrow keys to nudge the camera, or dial in the exact Pan, Tilt, Horizon Roll, and Zoom.
@@ -51,11 +71,12 @@ Whether you've purchased a [DJI OSMO 360 II](https://link.amazon/A0bJE05Ol), an 
 * **Smart History & Caching:** Backed by a persistent SQLite database, the app remembers which folders you've visited for instant loading and places a helpful checkmark on photos you've already opened to ease navigating large folders. Fully supports EXIF metadata reading.
 
 **Included Samples**
-* Experiment, practice or simply test the tool with provided sample 360 photos in the `samples` folder.
+* Experiment, practice or simply test the tool with provided sample 360 photos in the [samples/360](https://github.com/Cat5TV/360-portrait-studio/tree/main/samples/360) folder.
+* Preview sample exports to see what this application is capable of in the [samples/Exports](https://github.com/Cat5TV/360-portrait-studio/tree/main/samples/Exports) folder.
 * All sample images are licensed under the terms of the Creative Commons Zero (CC0) dedication, and may be used by anyone for any purpose, commercial or otherwise, without restriction.
 * All sample photos are taken by Robbie Ferguson on a DJI OSMO 360 II camera unless otherwise noted.
 
-## Cache and Database Location
+## 💾 Cache and Database Location
 
 This folder stores the compressed thumbnail sprites and the history database which tells the Load Image window which files have already been opened (and adds a checkmark to the ones that have).
 
@@ -65,7 +86,7 @@ This folder stores the compressed thumbnail sprites and the history database whi
 
 With Baldnerd's 360 Portrait Studio closed, you can safely delete the cache folder if desired.
 
-## Run Baldnerd's 360 Portrait Studio
+## 💻 Run Baldnerd's 360 Portrait Studio
 
 ### Download and Run It Like a Pro (Binaries)
 
