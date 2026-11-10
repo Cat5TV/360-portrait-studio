@@ -27,7 +27,7 @@ Whether you've captured footage with a [DJI OSMO 360 II](https://link.amazon/A0b
 
 Official pre-built binaries are available exclusively on Patreon:
 
-[![Download on Patreon](https://img.shields.io/badge/Patreon-Download_Official_Binaries-FF424D?style=for-the-badge&logo=patreon&logoColor=white)](https://www.patreon.com/Category5/posts/download-360-173554469)
+[![Buy on Patreon for Windows, macOS and Linux](https://img.shields.io/badge/Patreon-Buy_on_Patreon_for_Windows,_macOS_and_Linux-FF424D?style=for-the-badge&logo=patreon&logoColor=white)](https://www.patreon.com/Category5/posts/download-360-173554469)
 
 > [!IMPORTANT]
 > To ensure you are running safe, unmodified software, and to support my ongoing development efforts as a weekend programmer, please ensure you download and run only official binaries.
