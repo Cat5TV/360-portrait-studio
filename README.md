@@ -32,9 +32,18 @@ Official pre-built binaries are available exclusively on Patreon:
 > [!IMPORTANT]
 > To ensure you are running safe, unmodified software, and to support my ongoing development efforts as a weekend programmer, please ensure you download and run only official binaries.
 
+### 🎟️ Purchasing Information
+
+- [Patrons of Category5 TV Network](https://patreon.com/Cat5TV) can download this software from Patreon at no additional cost as a perk of their membership.
+- **Non-members** must pay a modest one-time fee.
+
+> [!TIP]
+> **Lifetime Updates Included**  
+> Every purchase includes updates for the life of the product. Whenever new features are added and updated versions are released, you can upgrade at no additional charge.
+
 ---
 
-### Integrity Verification (MD5 Checksums)
+### 📟 Integrity Verification (MD5 Checksums)
 
 #### Release `v1.2`
 
