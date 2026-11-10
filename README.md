@@ -1,13 +1,27 @@
-# Baldnerd's 360 Portrait Studio
+<div align="center">
 
-by Robbie Ferguson // The Bald Nerd // Category5 TV Network
+# 📷 Baldnerd's 360 Portrait Studio
 
-A professional imaging tool to create beautiful 2D images from 360-degree equirectangular sources.
+**A professional imaging tool to create beautiful 2D images from 360-degree equirectangular sources.**
 
-Whether you've purchased a [DJI OSMO 360 II](https://link.amazon/A0bJE05Ol), an [Insta 360 X6](https://link.amazon/B00bpMqKL) or even the airborne [DJI Avata 360](https://link.amazon/B00bpMqKL) drone, you'll end up with some incredible 360 photos that are difficult to edit or view on traditional displays, and even more difficult to print.
+<sub>Created by **Robbie Ferguson** // **The Bald Nerd** // **Category5 TV Network**</sub>
 
-**Baldnerd's 360 Portrait Studio** is a desktop application designed to bridge the gap between immersive 360-degree photography and traditional 2D formats. It allows photographers to load full equirectangular 360 photos, perfectly frame a specific subject, apply professional-grade color corrections, and export standard, flat images ready for print or social media.
+</div>
 
+---
+
+### 📋 Overview
+
+Whether you've captured footage with a [DJI OSMO 360 II](https://link.amazon/A0bJE05Ol), an [Insta 360 X6](https://link.amazon/B00bpMqKL), or the airborne [DJI Avata 360](https://link.amazon/B00bpMqKL) drone, you end up with incredible 360° captures that are notoriously difficult to edit, view on standard screens, or send to the printer.
+
+| 💡 **Baldnerd To The Rescue** |
+| :--- |
+| **Baldnerd's 360 Portrait Studio** bridges the gap between immersive 360-degree photography and traditional 2D formats, giving you full creative control over perspective, composition, and finish. |
+
+#### What You Can Do:
+* **Frame Any Angle:** Load full equirectangular 360° photos and pull out the exact perspective, crop, and framing you want.
+* **Refine & Polish:** Apply professional-grade color corrections tailored for standard display.
+* **Export Anywhere:** Produce crisp, flat images optimized for physical print or high-impact social media posts.
 
 ## 📦 Official Binaries
 
